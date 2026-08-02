@@ -1,0 +1,94 @@
+# Credentials
+credentials.yml
+
+# Maven
+*target*
+log/
+*gitignored-secrets.yml
+
+# JS dependencies
+*node_modules*
+
+# Package Files 
+*.jar
+*.war
+*.ear
+*.class
+
+# IntelliJ
+.idea
+*.iml
+
+# Mac
+.DS_Store
+
+#VSCode
+.vscode
+
+# Maven
+*target*
+log/
+
+# JS dependencies
+*node_modules*
+
+# Package Files
+*.jar
+*.war
+*.ear
+*.class
+
+# eclipse specific git ignore
+*.pydevproject
+.project
+.metadata
+bin/**
+tmp/**
+tmp/**/*
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.classpath
+.settings/
+.loadpath
+.factorypath
+
+# External tool builders
+.externalToolBuilders/
+
+# Locally stored "Eclipse launch configurations"
+*.launch
+
+# STS (Spring Tool Suite)
+.springBeans
+
+#Clover
+.clover/
+
+# IntelliJ
+.idea
+*.iml
+
+# yarn specific
+**/src/main/frontend/dist/**
+yarn.lock
+
+# Maven revision
+.flattened-pom.xml​
+
+# Mac
+.DS_Store
+
+.yo-rc.json
+
+# local secrets (env passwords)
+config-*-secrets.yml
+
+*-local.yml
+# ...but the local environment definition holds no secrets and must be committed,
+# otherwise a fresh clone cannot run the default `mvn test`
+!**/config/**/config-local*.yml
+
+*/target/*

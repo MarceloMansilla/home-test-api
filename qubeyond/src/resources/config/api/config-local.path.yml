@@ -1,0 +1,4 @@
+inventory:
+  getItems: /api/inventory
+  filterById: /api/inventory/filter
+  addItem: /api/inventory/add

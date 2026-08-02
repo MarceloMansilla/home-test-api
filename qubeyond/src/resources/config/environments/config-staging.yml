@@ -1,0 +1,12 @@
+# Staging environment
+url:
+  protocol: https
+  host: api.staging.com
+  # port omitted -> the protocol default (443) is used
+
+config:
+  debug: true
+  ssl: false
+  connectTimeout: 15000
+  readTimeout: 15000
+  mockExternalServices: false
