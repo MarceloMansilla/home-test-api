@@ -1,0 +1,14 @@
+# Production environment
+# NOTE: no secrets here - credentials are read from environment variables
+# in karate-config-prod.js
+url:
+  protocol: https
+  host: api.production.com
+  # port omitted -> the protocol default (443) is used
+
+config:
+  debug: false
+  ssl: true
+  connectTimeout: 15000
+  readTimeout: 15000
+  mockExternalServices: false

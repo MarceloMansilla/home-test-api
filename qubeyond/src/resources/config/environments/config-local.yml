@@ -1,0 +1,12 @@
+# Local environment - API running on the developer machine
+url:
+  protocol: http
+  host: localhost
+  port: 3100
+
+config:
+  debug: true
+  ssl: false
+  connectTimeout: 5000
+  readTimeout: 5000
+  mockExternalServices: true
