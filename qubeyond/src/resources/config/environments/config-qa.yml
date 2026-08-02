@@ -1,0 +1,12 @@
+# QA environment
+url:
+  protocol: https
+  host: api.qa.com
+  # port omitted -> the protocol default (443) is used
+
+config:
+  debug: true
+  ssl: false
+  connectTimeout: 10000
+  readTimeout: 10000
+  mockExternalServices: false
