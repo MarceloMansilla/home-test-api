@@ -19,4 +19,3 @@ Feature: Inventory
         And param id = id_item
         When method GET
         * notepad.set('response_filter_by_id', response)
-
