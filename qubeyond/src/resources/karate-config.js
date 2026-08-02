@@ -41,9 +41,9 @@ function fn() {
 
   // Verbose capture in reports + console only where it is useful
   if (config.debugMode) {
-    karate.configure('report', { showLog: false, showAllSteps: false });
-    karate.configure('logPrettyRequest', false);
-    karate.configure('logPrettyResponse', false);
+    karate.configure('report', { showLog: true, showAllSteps: true });
+    karate.configure('logPrettyRequest', true);
+    karate.configure('logPrettyResponse', true);
   }
 
   return config;
