@@ -3,7 +3,7 @@ Feature: Inventory Test - Quality - Regression
 
 
 Background:
-    * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@@validation_items')
+    * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')
     * def items = response_inventory.response.data
 
 Scenario: Validate schema items - GET
