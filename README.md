@@ -68,6 +68,7 @@ home-test-api/
         │   │       └── config-prod.path.yml
         │   ├── utils/data/                      ← JSON fixtures
         │   │   ├── dataset/inventory.json       ← shared default
+        │   │   ├── dataset/inventoryRequiredKeys.json ← drives the missing-field cases
         │   │   ├── dataValidation/inventory.json
         │   │   ├── schemes/inventory.json
         │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
@@ -314,6 +315,38 @@ utils/data/<folder>/<name>.json         ← shared default otherwise
 
 An environment only needs its own copy when its data actually differs, so there is no duplication
 by default. Scenarios call these loaders by name only and never know which file was used.
+
+### Adding a test case to an existing scenario
+
+The missing-field scenarios are a **dynamic Scenario Outline**: the `Examples` table is a single
+cell holding an expression, and Karate generates one scenario per element of the list it returns.
+
+```gherkin
+Scenario Outline: Add new item with missing information (<key>) - ...
+  * def body_with_missing_information = utils.remove_key(body.data, key)
+  ...
+  Examples:
+    | read('classpath:utils/data/dataset/inventoryRequiredKeys.json') |
+```
+
+```json
+[
+    { "key": "id" },
+    { "key": "name" },
+    { "key": "image" },
+    { "key": "price" }
+]
+```
+
+Each object in the file becomes one scenario, and each of its properties becomes a variable inside
+the outline (`key` above, also usable as `<key>` in the scenario name). Covering a new required
+field is one more object in that JSON file — the four feature files that share it
+(smoke/regression × quality/stability) are not touched.
+
+> The expression in the `Examples` cell is evaluated before the `Background` runs and outside the
+> `karate-config.js` scope, so it can only use Karate built-ins. That is why it calls `read(...)`
+> directly instead of `functions.getDataSetJsonByName(...)` — a `def` from the `Background` or a
+> config variable is not yet defined at that point.
 
 ### Adding an endpoint
 

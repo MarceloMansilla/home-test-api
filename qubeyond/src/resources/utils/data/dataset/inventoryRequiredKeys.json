@@ -1,0 +1,6 @@
+[
+    { "key": "id" },
+    { "key": "name" },
+    { "key": "image" },
+    { "key": "price" }
+]
