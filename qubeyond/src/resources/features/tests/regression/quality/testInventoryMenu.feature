@@ -14,7 +14,7 @@ Scenario: Validate schema items - GET
     # '==' means these are the ONLY keys allowed - an extra or missing key fails
     * match each items ==  schemaValidation
 
-Scenario: Validate that the response contains at least 9 items - GET
+Scenario: Validate that the response contains the minimum expected items - GET
 
-    # the list must not be empty, must be equals to or greter than 9 elements
-    * assert items.length >= 9
+    # the catalogue size expected for the active environment, from its config YAML
+    * assert items.length >= testData.minItemCount

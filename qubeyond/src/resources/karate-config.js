@@ -28,6 +28,9 @@ function fn() {
     env: env,
     baseUrl: baseUrl,
     api: apiPath,
+    // ids and thresholds the scenarios assert against - per environment, so a
+    // feature never has to be edited to run somewhere else
+    testData: envConfig.testData,
     debugMode: envConfig.config.debug,
     mockExternalServices: envConfig.config.mockExternalServices,
     utils: karate.call('classpath:utils/functions/karateUtils.js'),

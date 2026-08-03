@@ -66,6 +66,11 @@ home-test-api/
         │   │       ├── config-qa.path.yml
         │   │       ├── config-staging.path.yml
         │   │       └── config-prod.path.yml
+        │   ├── utils/data/                      ← JSON fixtures
+        │   │   ├── dataset/inventory.json       ← shared default
+        │   │   ├── dataValidation/inventory.json
+        │   │   ├── schemes/inventory.json
+        │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
         │   └── features/
         │       └── operations/
         │           └── inventory/
@@ -81,12 +86,13 @@ home-test-api/
 
 The design principle is a strict separation between **data** and **logic**:
 
-- **YAML files hold data** — hosts, ports, protocols, timeouts, feature flags, endpoint paths.
-  Adding an environment means adding files, not editing code.
+- **YAML files hold data** — hosts, ports, protocols, timeouts, feature flags, endpoint paths, and
+  the seed data the assertions depend on. Adding an environment means adding files, not editing code.
 - **JavaScript files hold logic** — anything YAML cannot express: reading secrets from the
   environment, validating preconditions, conditional setup.
-- **Feature files hold intent** — they never contain a URL or a hardcoded path. They reference
-  `baseUrl` and `api.*`, so the same scenario is environment-agnostic.
+- **Feature files hold intent** — they never contain a URL, a hardcoded path, a fixed id or a fixed
+  count. They reference `baseUrl`, `api.*` and `testData.*`, so the same scenario is
+  environment-agnostic.
 
 ### Configuration resolution chain
 
@@ -118,7 +124,8 @@ flowchart TD
 
 ### What each layer contains
 
-**`config/environments/config-<env>.yml`** — the environment definition:
+**`config/environments/config-<env>.yml`** — the environment definition, including the seed data
+the scenarios assert against:
 
 ```yaml
 url:
@@ -132,7 +139,16 @@ config:
   connectTimeout: 5000
   readTimeout: 5000
   mockExternalServices: true
+
+testData:
+  filterId: "3"          # id used by the filter-by-id scenarios
+  existingItemId: "1"    # id that must already exist, so POSTing it returns 400
+  minItemCount: 9        # smallest catalogue size the menu scenario accepts
 ```
+
+Without `testData` the scenarios would carry ids and counts that only hold for one environment,
+and pointing the suite elsewhere would mean editing feature files. Every environment declares its
+own values instead.
 
 **`config/api/config-<env>.path.yml`** — the endpoint catalogue:
 
@@ -173,6 +189,7 @@ Scenario: Validation keys items
 | `env` | Active environment name, lowercased. |
 | `baseUrl` | Full base URL assembled from the environment YAML. |
 | `api` | Endpoint paths, e.g. `api.inventory.getItems`. |
+| `testData` | Seed data the scenarios assert against — `filterId`, `existingItemId`, `minItemCount`. |
 | `debugMode` | When true, enables verbose request/response logging in console and report. |
 | `mockExternalServices` | Flag for scenarios that need to branch on mocking. |
 | `credentials` | **`prod` only** — `apiKey` and `clientSecret` from environment variables. |
@@ -272,12 +289,29 @@ both the console and the report.
 
 ### Adding an environment
 
-1. Create `src/resources/config/environments/config-<env>.yml`.
+1. Create `src/resources/config/environments/config-<env>.yml`, including its `testData` block.
 2. Create `src/resources/config/api/config-<env>.path.yml`.
 3. Optionally create `karate-config-<env>.js` for logic-only overrides.
-4. Run it: `mvn test '-Dkarate.env=<env>'`.
+4. Optionally add `utils/data/<folder>/<env>/<name>.json` when a JSON fixture differs from the
+   shared default — most notably `dataValidation/<env>/inventory.json`, which must describe the
+   record for that environment's `testData.filterId`.
+5. Run it: `mvn test '-Dkarate.env=<env>'`.
 
-No change to `karate-config.js` is required — resolution is by naming convention.
+No change to `karate-config.js` and no change to any feature file is required — resolution is by
+naming convention.
+
+### Environment-scoped test data
+
+`functions.getSchemaJsonByName`, `getDataValidationJsonByName` and `getDataSetJsonByName` resolve
+in two steps (`utils/functions/DinamicsCalls.js`):
+
+```
+utils/data/<folder>/<env>/<name>.json   ← used when present
+utils/data/<folder>/<name>.json         ← shared default otherwise
+```
+
+An environment only needs its own copy when its data actually differs, so there is no duplication
+by default. Scenarios call these loaders by name only and never know which file was used.
 
 ### Adding an endpoint
 

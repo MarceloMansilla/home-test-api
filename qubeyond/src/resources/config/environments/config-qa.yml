@@ -10,3 +10,10 @@ config:
   connectTimeout: 10000
   readTimeout: 10000
   mockExternalServices: false
+
+# Seed data the scenarios depend on - placeholders, like the host above.
+# Align them with the real QA seed catalogue before using this environment.
+testData:
+  filterId: "3"
+  existingItemId: "1"
+  minItemCount: 9
