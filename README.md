@@ -29,7 +29,8 @@ mvn -v
 ```
 
 **For `local` runs only:** the API under test must be listening on `http://localhost:3100`.
-Start it before running the suite, otherwise every scenario fails with connection refused.
+Start it before running the suite — if it is not up, the run stops on the preflight check with a
+single `PREFLIGHT FAILED` message instead of running anything (see §5).
 
 > The hosts configured for `dev`, `qa`, `staging` and `prod` (`api.develop.com`, `api.qa.com`,
 > `api.staging.com`, `api.production.com`) are placeholders. Point them at real endpoints in
@@ -72,7 +73,7 @@ home-test-api/
         │   │   ├── dataValidation/inventory.json
         │   │   ├── schemes/inventory.json
         │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
-        │   └── features/
+        │   ├── features/
         │       ├── operations/                   ← the API layer: every HTTP call
         │       │   └── inventory/
         │       │       └── inventory.feature
@@ -90,6 +91,8 @@ home-test-api/
         │               ├── testInventoryAddItemMissingInfo.feature
         │               ├── testInventoryFilter.feature
         │               └── testInventoryMenu.feature
+        │   └── health/
+        │       └── health.feature               ← preflight; outside features/ by design
         └── test/java/
             └── karate/KarateRunnerTest.java     ← JUnit 5 entry point
 ```
@@ -336,7 +339,34 @@ Run `KarateRunnerTest` directly. It defaults to `local`; select another environm
 
 ---
 
-## 5. Reports
+## 5. Preflight check
+
+`KarateRunnerTest` sends one request to the target before the suite starts. If it does not answer,
+the run stops with a single message and **no scenario is executed**:
+
+```
+PREFLIGHT FAILED - the target for karate.env=local did not answer, so the suite was not run.
+Start the API and try again ('local' expects http://localhost:3100), or check the host in
+config/environments/config-local.yml.
+```
+
+Without it an unreachable API fails all 25 scenarios with the same connection error, which buries
+the one fact that matters and invites the failures to be read as product defects.
+
+`health/health.feature` holds the check. It sits **outside `features/`** so the runner's main path
+(`classpath:features`) cannot pick it up as a 26th test, and it reads `baseUrl` from
+`karate-config.js` so the host is never duplicated into Java. It retries (3 × 2s) before giving up,
+so a container that is still starting reads as "not ready yet" rather than "down".
+
+Its output goes to `target/karate-preflight/` — a gate is not a test result, and it must not
+replace or back up the real report.
+
+Keep the assertions in that file to reachability alone. Anything more makes the whole suite
+unrunnable whenever that extra assertion breaks.
+
+---
+
+## 6. Reports
 
 After any run:
 
@@ -370,7 +400,7 @@ mvn test '-Dkarate.log.level=DEBUG'
 
 ---
 
-## 6. Extending the suite
+## 7. Extending the suite
 
 ### Adding an environment
 
@@ -492,7 +522,7 @@ calls, one file per test case under `tests/quality/` and `tests/stability/` for 
 
 ---
 
-## 7. Secrets
+## 8. Secrets
 
 Credentials are never committed. They are read from environment variables at runtime and validated
 in `karate-config-prod.js`. `.gitignore` excludes `config-*-secrets.yml` and `credentials.yml`.
