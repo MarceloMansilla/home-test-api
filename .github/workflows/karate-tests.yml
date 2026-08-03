@@ -149,10 +149,10 @@ jobs:
         env:
           ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          host=$(grep -E '^\s+host:' "qubeyond/src/resources/config/environments/config-$ENVIRONMENT.yml" | awk '{print $2}')
+          host=$(grep -E '^\s+host:' "src/resources/config/environments/config-$ENVIRONMENT.yml" | awk '{print $2}')
           case "$host" in
             api.develop.com|api.qa.com|api.staging.com|api.production.com)
-              echo "::warning file=qubeyond/src/resources/config/environments/config-$ENVIRONMENT.yml::host '$host' is the placeholder shipped with the repository - the preflight will fail until it points at a real endpoint" ;;
+              echo "::warning file=src/resources/config/environments/config-$ENVIRONMENT.yml::host '$host' is the placeholder shipped with the repository - the preflight will fail until it points at a real endpoint" ;;
           esac
 
       - uses: actions/setup-java@v4
@@ -188,7 +188,6 @@ jobs:
           exit 1
 
       - name: Run the suite
-        working-directory: qubeyond
         env:
           # read through the environment, never interpolated into the command
           ENVIRONMENT: ${{ inputs.environment }}
@@ -223,7 +222,6 @@ jobs:
 
       - name: Summarise the run
         if: always()
-        working-directory: qubeyond
         run: |
           set -uo pipefail
           summary=target/karate-reports/karate-summary-json.txt
@@ -266,9 +264,9 @@ jobs:
           # response bodies where the environment asked for them
           name: karate-${{ inputs.environment }}-${{ github.run_number }}
           path: |
-            qubeyond/target/karate-reports/
-            qubeyond/target/karate-preflight/
-            qubeyond/target/karate.log
+            target/karate-reports/
+            target/karate-preflight/
+            target/karate.log
           if-no-files-found: warn
           retention-days: 30
 

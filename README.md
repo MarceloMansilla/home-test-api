@@ -44,57 +44,62 @@ single `PREFLIGHT FAILED` message instead of running anything (see §5).
 home-test-api/
 ├── README.md
 ├── .gitignore
-└── qubeyond/
-    ├── pom.xml                                  ← dependencies, classpath, default environment and thread count
-    └── src/
-        ├── resources/                           ← test classpath root
-        │   ├── karate-config.js                 ← base config: loads the YAML for the active env
-        │   ├── karate-config-dev.js             ← per-environment overrides (logic only)
-        │   ├── karate-config-qa.js
-        │   ├── karate-config-staging.js
-        │   ├── karate-config-prod.js            ← reads credentials from environment variables
-        │   ├── logback-test.xml                 ← logging configuration
-        │   ├── config/
-        │   │   ├── environments/                ← WHERE each environment lives
-        │   │   │   ├── config-local.yml
-        │   │   │   ├── config-dev.yml
-        │   │   │   ├── config-qa.yml
-        │   │   │   ├── config-staging.yml
-        │   │   │   └── config-prod.yml
-        │   │   └── api/                         ← WHICH endpoints exist
-        │   │       ├── config-local.path.yml
-        │   │       ├── config-dev.path.yml
-        │   │       ├── config-qa.path.yml
-        │   │       ├── config-staging.path.yml
-        │   │       └── config-prod.path.yml
-        │   ├── utils/data/                      ← JSON fixtures
-        │   │   ├── dataset/inventory.json       ← payloads driving the add-item cases
-        │   │   ├── dataset/inventoryRequiredKeys.json ← drives the missing-field cases
-        │   │   ├── dataValidation/inventory.json
-        │   │   ├── schemes/inventory.json
-        │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
-        │   ├── features/
-        │       ├── operations/                   ← the API layer: every HTTP call
-        │       │   └── inventory/
-        │       │       └── inventory.feature
-        │       └── tests/                        ← the assertions
-        │           ├── quality/                  ← response bodies, schemas, data
-        │           │   ├── testInventoryAddItem.feature
-        │           │   ├── testInventoryAddItemAndValidatePresent.feature
-        │           │   ├── testInventoryAddItemForExistent.feature
-        │           │   ├── testInventoryAddItemMissingInfo.feature
-        │           │   ├── testInventoryFilter.feature
-        │           │   └── testInventoryMenu.feature
-        │           └── stability/                ← status codes only
-        │               ├── testInventoryAddItem.feature
-        │               ├── testInventoryAddItemForExistent.feature
-        │               ├── testInventoryAddItemMissingInfo.feature
-        │               ├── testInventoryFilter.feature
-        │               └── testInventoryMenu.feature
-        │   └── health/
-        │       └── health.feature               ← preflight; outside features/ by design
-        └── test/java/
-            └── karate/KarateRunnerTest.java     ← JUnit 5 entry point
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                           ← build + suite invariants, no API needed
+│       ├── karate-tests.yml                 ← runs the suite against one environment
+│       ├── nightly-regression.yml           ← full regression against qa, weeknights
+│       └── post-deploy-smoke.yml            ← smoke run after a deployment
+├── pom.xml                                  ← dependencies, classpath, default environment and thread count
+└── src/
+    ├── resources/                           ← test classpath root
+    │   ├── karate-config.js                 ← base config: loads the YAML for the active env
+    │   ├── karate-config-dev.js             ← per-environment overrides (logic only)
+    │   ├── karate-config-qa.js
+    │   ├── karate-config-staging.js
+    │   ├── karate-config-prod.js            ← reads credentials from environment variables
+    │   ├── logback-test.xml                 ← logging configuration
+    │   ├── config/
+    │   │   ├── environments/                ← WHERE each environment lives
+    │   │   │   ├── config-local.yml
+    │   │   │   ├── config-dev.yml
+    │   │   │   ├── config-qa.yml
+    │   │   │   ├── config-staging.yml
+    │   │   │   └── config-prod.yml
+    │   │   └── api/                         ← WHICH endpoints exist
+    │   │       ├── config-local.path.yml
+    │   │       ├── config-dev.path.yml
+    │   │       ├── config-qa.path.yml
+    │   │       ├── config-staging.path.yml
+    │   │       └── config-prod.path.yml
+    │   ├── utils/data/                      ← JSON fixtures
+    │   │   ├── dataset/inventory.json       ← payloads driving the add-item cases
+    │   │   ├── dataset/inventoryRequiredKeys.json ← drives the missing-field cases
+    │   │   ├── dataValidation/inventory.json
+    │   │   ├── schemes/inventory.json
+    │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
+    │   ├── features/
+    │   │   ├── operations/                  ← the API layer: every HTTP call
+    │   │   │   └── inventory/
+    │   │   │       └── inventory.feature
+    │   │   └── tests/                       ← the assertions
+    │   │       ├── quality/                 ← response bodies, schemas, data
+    │   │       │   ├── testInventoryAddItem.feature
+    │   │       │   ├── testInventoryAddItemAndValidatePresent.feature
+    │   │       │   ├── testInventoryAddItemForExistent.feature
+    │   │       │   ├── testInventoryAddItemMissingInfo.feature
+    │   │       │   ├── testInventoryFilter.feature
+    │   │       │   └── testInventoryMenu.feature
+    │   │       └── stability/               ← status codes only
+    │   │           ├── testInventoryAddItem.feature
+    │   │           ├── testInventoryAddItemForExistent.feature
+    │   │           ├── testInventoryAddItemMissingInfo.feature
+    │   │           ├── testInventoryFilter.feature
+    │   │           └── testInventoryMenu.feature
+    │   └── health/
+    │       └── health.feature               ← preflight; outside features/ by design
+    └── test/java/
+        └── karate/KarateRunnerTest.java     ← JUnit 5 entry point
 ```
 
 ---
@@ -248,11 +253,7 @@ Scenario: Validation keys items
 
 ## 4. Running the tests
 
-All commands run from the **`qubeyond`** directory (the one containing `pom.xml`):
-
-```bash
-cd qubeyond
-```
+All commands run from the repository root (the directory containing `pom.xml`).
 
 ### Basic runs
 
@@ -401,7 +402,7 @@ unrunnable whenever that extra assertion breaks.
 After any run:
 
 ```
-qubeyond/target/karate-reports/karate-summary.html
+target/karate-reports/karate-summary.html
 ```
 
 Open it in a browser for the full HTML report. Cucumber-compatible JSON is emitted alongside it

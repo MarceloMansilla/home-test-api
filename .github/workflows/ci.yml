@@ -26,7 +26,6 @@ permissions:
 defaults:
   run:
     shell: bash
-    working-directory: qubeyond
 
 jobs:
   build:
@@ -74,12 +73,12 @@ jobs:
             utils/data/schemes/inventory.json
           do
             if [ ! -f "target/test-classes/$resource" ]; then
-              echo "::error file=qubeyond/pom.xml::not on the test classpath: $resource"
+              echo "::error file=pom.xml::not on the test classpath: $resource"
               status=1
             fi
           done
           if [ -f target/test-classes/karate/KarateRunnerTest.java ]; then
-            echo "::error file=qubeyond/pom.xml::KarateRunnerTest.java was copied as a resource - the **/*.java exclude is not being applied"
+            echo "::error file=pom.xml::KarateRunnerTest.java was copied as a resource - the **/*.java exclude is not being applied"
             status=1
           fi
           exit $status
@@ -102,28 +101,28 @@ jobs:
         # karate-config.js reads config/environments/config-<env>.yml AND
         # config/api/config-<env>.path.yml by naming convention. One without the
         # other is an environment that fails on its first scenario.
-        working-directory: qubeyond/src/resources
+        working-directory: src/resources
         run: |
           set -uo pipefail
           status=0
           for file in config/environments/config-*.yml; do
             env=${file#config/environments/config-}; env=${env%.yml}
             if [ ! -f "config/api/config-$env.path.yml" ]; then
-              echo "::error file=qubeyond/src/resources/$file::environment '$env' has no config/api/config-$env.path.yml"
+              echo "::error file=src/resources/$file::environment '$env' has no config/api/config-$env.path.yml"
               status=1
             fi
           done
           for file in config/api/config-*.path.yml; do
             env=${file#config/api/config-}; env=${env%.path.yml}
             if [ ! -f "config/environments/config-$env.yml" ]; then
-              echo "::error file=qubeyond/src/resources/$file::endpoint catalogue for '$env' has no config/environments/config-$env.yml"
+              echo "::error file=src/resources/$file::endpoint catalogue for '$env' has no config/environments/config-$env.yml"
               status=1
             fi
           done
           exit $status
 
       - name: Every environment YAML holds the keys the suite reads from it
-        working-directory: qubeyond/src/resources
+        working-directory: src/resources
         run: |
           python3 - <<'PY'
           import glob, sys, yaml
@@ -149,20 +148,20 @@ jobs:
               doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
               for section, key in required:
                   if not isinstance(doc.get(section), dict) or key not in doc[section]:
-                      print(f"::error file=qubeyond/src/resources/{path}::missing '{section}.{key}'")
+                      print(f"::error file=src/resources/{path}::missing '{section}.{key}'")
                       status = 1
 
           for path in sorted(glob.glob('config/api/config-*.path.yml')):
               doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
               for section, key in endpoints:
                   if not isinstance(doc.get(section), dict) or key not in doc[section]:
-                      print(f"::error file=qubeyond/src/resources/{path}::missing endpoint '{section}.{key}'")
+                      print(f"::error file=src/resources/{path}::missing endpoint '{section}.{key}'")
                       status = 1
           sys.exit(status)
           PY
 
       - name: JSON fixtures parse and carry the keys the scenarios bind to
-        working-directory: qubeyond/src/resources
+        working-directory: src/resources
         run: |
           python3 - <<'PY'
           import glob, json, os, sys
@@ -205,11 +204,11 @@ jobs:
               try:
                   doc = json.load(open(path, encoding='utf-8'))
               except ValueError as exc:
-                  print(f"::error file=qubeyond/src/resources/{path}::invalid JSON: {exc}")
+                  print(f"::error file=src/resources/{path}::invalid JSON: {exc}")
                   status = 1
                   continue
               for problem in checks.get(folder, lambda *_: [])(doc, path):
-                  print(f"::error file=qubeyond/src/resources/{path}::{problem}")
+                  print(f"::error file=src/resources/{path}::{problem}")
                   status = 1
           sys.exit(status)
           PY
@@ -219,7 +218,7 @@ jobs:
         # @regressionQuality and were invisible to --tags @regressionStability.
         # Nothing failed; the tests simply stopped running. This is that bug,
         # turned into a build error.
-        working-directory: qubeyond/src/resources/features/tests
+        working-directory: src/resources/features/tests
         run: |
           set -uo pipefail
           status=0
@@ -233,12 +232,12 @@ jobs:
 
             case $tags in
               *"@smoke$expected"*|*"@regression$expected"*) ;;
-              *) echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::no suite tag - add @smoke$expected and/or @regression$expected, or this file runs in no suite"
+              *) echo "::error file=src/resources/features/tests/$file,line=1::no suite tag - add @smoke$expected and/or @regression$expected, or this file runs in no suite"
                  status=1 ;;
             esac
             case $tags in
               *"@smoke$foreign"*|*"@regression$foreign"*)
-                 echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::tagged @…$foreign while living under $dir/ - --tags @…$expected will not select it"
+                 echo "::error file=src/resources/features/tests/$file,line=1::tagged @…$foreign while living under $dir/ - --tags @…$expected will not select it"
                  status=1 ;;
             esac
 
@@ -248,7 +247,7 @@ jobs:
             if grep -q '@add_new_item' "$file"; then
               case $tags in
                 *'@destructive'*) ;;
-                *) echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::calls @add_new_item but is not tagged @destructive - '--tags ~@destructive' would not exclude it"
+                *) echo "::error file=src/resources/features/tests/$file,line=1::calls @add_new_item but is not tagged @destructive - '--tags ~@destructive' would not exclude it"
                    status=1 ;;
               esac
             fi
@@ -259,7 +258,7 @@ jobs:
         # The tag is the ergonomic way to skip writes; this line is the
         # guarantee. A second write scenario added without it would silently
         # bypass a protected environment.
-        working-directory: qubeyond/src/resources/features/operations
+        working-directory: src/resources/features/operations
         run: |
           set -uo pipefail
           status=0
@@ -272,7 +271,7 @@ jobs:
               END { for (b in writes) if (!shared && !guard[b]) { print where[b]; bad = 1 } exit bad }
             ' "$file" > /tmp/unguarded; then
               while read -r line; do
-                echo "::error file=qubeyond/src/resources/features/operations/$file,line=$line::write verb with no allowWrites guard in its scenario - a protected environment could be written to"
+                echo "::error file=src/resources/features/operations/$file,line=$line::write verb with no allowWrites guard in its scenario - a protected environment could be written to"
               done < /tmp/unguarded
               status=1
             fi
@@ -282,13 +281,13 @@ jobs:
       - name: The operations layer stays out of the run
         # Runner.path("classpath:features") sweeps the whole tree, so the
         # operations features are only kept out of the results by @ignore.
-        working-directory: qubeyond/src/resources/features/operations
+        working-directory: src/resources/features/operations
         run: |
           set -uo pipefail
           status=0
           for file in */*.feature; do
             if ! sed -n '1,/^Feature:/p' "$file" | grep -q '@ignore'; then
-              echo "::error file=qubeyond/src/resources/features/operations/$file,line=1::not tagged @ignore - the runner would count its scenarios as test results"
+              echo "::error file=src/resources/features/operations/$file,line=1::not tagged @ignore - the runner would count its scenarios as test results"
               status=1
             fi
           done
@@ -297,7 +296,7 @@ jobs:
       - name: The preflight stays outside features/
         # classpath:health is loaded on its own, before the suite. Under
         # features/ it would also become an extra test case in every report.
-        working-directory: qubeyond/src/resources
+        working-directory: src/resources
         run: |
           set -uo pipefail
           status=0
@@ -314,14 +313,14 @@ jobs:
       - name: Features name no host, port or path of their own
         # A feature that spells out a URL stops being environment-agnostic, and
         # the whole config chain stops meaning anything.
-        working-directory: qubeyond/src/resources
+        working-directory: src/resources
         run: |
           set -uo pipefail
           hits=$(grep -rn --include='*.feature' -E 'https?://' features health \
                  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)
           if [ -n "$hits" ]; then
             echo "$hits" | while IFS=: read -r file line _; do
-              echo "::error file=qubeyond/src/resources/$file,line=$line::hardcoded URL - use 'url baseUrl' and 'path api.<resource>.<operation>'"
+              echo "::error file=src/resources/$file,line=$line::hardcoded URL - use 'url baseUrl' and 'path api.<resource>.<operation>'"
             done
             exit 1
           fi
@@ -338,7 +337,7 @@ jobs:
           fi
           # the one file the *-local.yml rule must not swallow: it defines the
           # default environment and holds no secrets, so a fresh clone needs it
-          if ! git ls-files --error-unmatch qubeyond/src/resources/config/environments/config-local.yml > /dev/null 2>&1; then
+          if ! git ls-files --error-unmatch src/resources/config/environments/config-local.yml > /dev/null 2>&1; then
             echo "::error file=.gitignore::config-local.yml is not tracked - a fresh clone cannot run the default 'mvn test'"
             status=1
           fi
