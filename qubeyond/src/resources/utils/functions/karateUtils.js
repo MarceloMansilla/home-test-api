@@ -48,5 +48,29 @@ function fn() {
     return copy;
   };
 
+  /**
+   * Finds the first object in the list whose id matches the given value.
+   *
+   * @param array  the list of objects, or the raw response ({ data: [ ... ] })
+   * @param value  the id to look for - number or string, both match
+   * @param name   the property holding the id - defaults to 'id'
+   * @return the matching object, or null when there is none
+   */
+  utils.get_object_by_id = function (array, value, name) {
+    const key = name || "id";
+    const items = array && array.data ? array.data : array;
+
+    if (!items) return null;
+
+    // compare as strings: the API stores ids as "1" but accepts 1,
+    // so the same item can carry either type
+    const target = "" + value;
+    for (var i = 0; i < items.length; i++) {
+      if ("" + items[i][key] === target) return items[i];
+    }
+
+    return null;
+  };
+
   return utils;
 }
