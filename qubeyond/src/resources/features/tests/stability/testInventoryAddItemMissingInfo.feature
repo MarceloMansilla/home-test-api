@@ -1,9 +1,11 @@
-@smokeStability
-Feature: Inventory Test - Stability - Smoke
+# @destructive: the POST is expected to be rejected, but it is still a write
+# attempt - an API that stopped validating would create the item
+@smokeStability @regressionStability @destructive
+Feature: Inventory Test - Stability
 
   Background:
-    * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')
-    * def items = response_inventory.response.data
+    # no GET here: what is asserted depends on the missing key alone, so the
+    # catalogue is never read - and this Background re-runs once per Examples row
     # the dataset is a list of payloads - any row works here, what decides the
     # outcome is the missing key. copy, not def: def would bind a reference to it
     * copy body = functions.getDataSetJsonByName("inventory")[0].item

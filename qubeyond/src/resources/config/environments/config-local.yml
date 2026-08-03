@@ -10,6 +10,10 @@ config:
   connectTimeout: 5000
   readTimeout: 5000
   mockExternalServices: true
+  # The API has no delete, so every POST is permanent. An environment that must
+  # not accumulate test data sets this to false, and the mutating tests refuse
+  # to run against it - see features/operations/inventory/inventory.feature.
+  allowWrites: true
 
 # Seed data the scenarios depend on. Every environment declares its own values,
 # so the same feature file runs everywhere without being edited.
