@@ -1,14 +1,20 @@
 name: CI
 
-# Everything here runs without a reachable API.
+# Build, static invariants, and the suite itself against a real API.
 #
-# The suite itself cannot: KarateRunnerTest sends one request to the target
-# before the suite starts and fails the run when it does not answer, and no
-# environment in config/environments/ points at a host reachable from CI
-# ('local' expects http://localhost:3100). So this workflow validates what can
-# be validated statically - the build, the test classpath, and the invariants
-# the suite's design depends on - and the suite itself runs from
-# karate-tests.yml, on demand and against a chosen environment.
+# The API under test is not deployed anywhere and is not part of this
+# repository: it ships as a container image, and 'local' expects it on
+# http://localhost:3100. That is reproducible on a runner, so the suite runs
+# here on every push and pull request - the runner starts the same image a
+# developer starts by hand, and the tests hit the same URL.
+#
+# The build and validate jobs stay independent of it. They need no API, they
+# fail for different reasons than a test does, and keeping them separate means
+# a broken classpath or a mistagged feature is still named as such when the
+# container is what is actually broken.
+#
+# karate-tests.yml remains the way to run against a *chosen* environment
+# (dev, qa, staging, prod) on demand.
 
 on:
   push:
@@ -346,3 +352,149 @@ jobs:
             status=1
           fi
           exit $status
+
+  suite:
+    # The API under test, then the suite against it. The container is created
+    # and destroyed inside this job, so the mutating scenarios run in full:
+    # every POST lands in a catalogue that is discarded when the job ends, which
+    # is the one place '--tags ~@destructive' is not needed.
+    name: Suite against the containerised API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The API is not part of this repository and is not deployed anywhere -
+      # it is distributed as this image, serving port 3100.
+      API_IMAGE: automaticbytes/demo-app
+      # what config-local.yml resolves to, asserted below rather than assumed
+      BASE_URL: http://localhost:3100
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Register the arm64 emulator
+        # automaticbytes/demo-app is published for linux/arm64 only, and the
+        # GitHub-hosted runners are amd64 with no binfmt handler registered.
+        # Without this the container is created and exits immediately with
+        # 'exec format error', which reads like a corrupt image rather than a
+        # missing emulator. (An arm64 runner would need neither this step nor
+        # the --platform flags below.)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Pull the API image
+        run: docker pull --platform linux/arm64 "$API_IMAGE"
+
+      - name: Run the API on port 3100
+        # -p 3100:3100 is what makes 'localhost:3100' on the runner reach it,
+        # and what config-local.yml is written against
+        run: docker run -d --platform linux/arm64 --name api-under-test -p 3100:3100 "$API_IMAGE"
+
+      - name: Verify the API is up
+        # The preflight inside the suite retries 3 x 2s - enough for a container
+        # that is nearly up, not for one still booting under emulation. Waiting
+        # here keeps a slow start from being reported as an unreachable target.
+        run: |
+          set -uo pipefail
+          # the path config/api/config-local.path.yml exposes as
+          # api.inventory.getItems - the same call the preflight makes
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$BASE_URL/api/inventory"; then
+              echo "the API answered on $BASE_URL/api/inventory"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the API did not answer on $BASE_URL within 60s"
+          docker logs api-under-test || true
+          exit 1
+
+      - name: The suite's base URL is the API that was just started
+        # 'local' is the default environment, so nothing on the mvn command line
+        # names a host - the URL is assembled by karate-config.js from this YAML.
+        # If it ever stopped resolving to the container, the suite would quietly
+        # test something else, so the two are tied together here.
+        working-directory: src/resources
+        run: |
+          set -uo pipefail
+          status=0
+          config=config/environments/config-local.yml
+          resolved="$(awk '/^url:/{u=1;next} /^[^[:space:]]/{u=0}
+                           u && /protocol:/{p=$2} u && /host:/{h=$2} u && /port:/{o=$2}
+                           END{print p "://" h ":" o}' "$config")"
+          if [ "$resolved" != "$BASE_URL" ]; then
+            echo "::error file=src/resources/$config::resolves to '$resolved', but the container serves '$BASE_URL'"
+            status=1
+          fi
+          for endpoint in $(awk '/:[[:space:]]*\//{print $2}' config/api/config-local.path.yml); do
+            case "$endpoint" in
+              /api/*) ;;
+              *) echo "::error file=src/resources/config/api/config-local.path.yml::endpoint '$endpoint' is not under /api - the API is served from $BASE_URL/api"
+                 status=1 ;;
+            esac
+          done
+          exit $status
+
+      - name: Run the suite
+        # karate.env defaults to 'local' in pom.xml; passed anyway so the target
+        # of this run is readable in the log without opening the POM
+        run: mvn -B -ntp test -Dkarate.env=local -Dkarate.threads=5
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          set -uo pipefail
+          summary=target/karate-reports/karate-summary-json.txt
+
+          if [ ! -f "$summary" ]; then
+            {
+              echo "### No report produced"
+              echo
+              echo "The suite never started. \`KarateRunnerTest\` gates it on one request to the"
+              echo "target and stops the run when that request does not answer, so look for"
+              echo "\`PREFLIGHT FAILED\` in the job log rather than for a failing scenario."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq -r '
+            "### Karate - env `\(.env)`, \(.threads) thread(s), \((.elapsedTime / 1000) | floor)s",
+            "",
+            "| Result | Count |",
+            "|---|---:|",
+            "| Scenarios passed | \(.scenariosPassed) |",
+            "| Scenarios failed | \(.scenariosfailed) |",
+            "| Features passed | \(.featuresPassed) |",
+            "| Features failed | \(.featuresFailed) |",
+            "",
+            "| Feature | Scenarios | Passed | Failed |",
+            "|---|---:|---:|---:|",
+            (.featureSummary[] | "| `\(.relativePath)` | \(.scenarioCount) | \(.passedCount) | \(.failedCount) |")
+          ' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: karate-ci-${{ github.run_number }}
+          path: |
+            target/karate-reports/
+            target/karate-preflight/
+            target/karate.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Container logs on failure
+        # the API's own view of the run - the only place a 500 that the report
+        # shows as an assertion failure can be traced to what the API did
+        if: failure()
+        run: docker logs api-under-test || true
+
+      - name: Stop the API
+        if: always()
+        run: docker rm -f api-under-test || true
