@@ -14,7 +14,16 @@
         </encoder>
     </appender>    
    
-    <logger name="com.intuit" level="DEBUG"/>
+    <!-- INFO by default, on purpose. At DEBUG the com.intuit logger writes every
+         request and response - headers included - to the console and to
+         target/karate.log, a file that outlives the run and is routinely archived
+         as a CI artifact. Logback initialises before karate-config.js can speak,
+         so the safe level has to be the one written here.
+
+         karate-config.js raises this to DEBUG for environments whose YAML sets
+         config.debug: true, which keeps that flag the single switch. Override for
+         one run with -Dkarate.log.level=DEBUG. -->
+    <logger name="com.intuit" level="${karate.log.level:-INFO}"/>
    
     <root level="info">
         <appender-ref ref="STDOUT" />

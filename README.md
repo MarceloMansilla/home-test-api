@@ -235,7 +235,7 @@ Scenario: Validation keys items
 | `baseUrl` | Full base URL assembled from the environment YAML. |
 | `api` | Endpoint paths, e.g. `api.inventory.getItems`. |
 | `testData` | Seed data the scenarios assert against — `filterId`, `existingItemId`, `minItemCount`. |
-| `debugMode` | When true, enables verbose request/response logging in console and report. |
+| `debugMode` | When true, enables verbose request/response logging in console, report and `target/karate.log`. |
 | `mockExternalServices` | Flag for scenarios that need to branch on mocking. |
 | `allowWrites` | Whether this environment may be written to. Absent counts as `false`. |
 | `credentials` | **`prod` only** — `apiKey` and `clientSecret` from environment variables. |
@@ -347,8 +347,26 @@ qubeyond/target/karate-reports/karate-summary.html
 Open it in a browser for the full HTML report. Cucumber-compatible JSON is emitted alongside it
 (`outputCucumberJson(true)` in the runner) for CI tools that consume that format.
 
-When `debug: true` is set for the environment, full request and response bodies are captured in
-both the console and the report.
+### Verbosity and `target/karate.log`
+
+`config.debug` in the environment YAML is the single switch. When it is `true`, full request and
+response bodies are captured in the console, the HTML report **and** `target/karate.log`. When it is
+`false` — as on `prod` — none of the three record them.
+
+`logback-test.xml` defaults the `com.intuit` logger to `INFO` rather than `DEBUG`, and
+`karate-config.js` raises it only where the environment asked for it. The default is the safe one
+because logback initialises before any config file is read: an environment that forgets the flag,
+or a new one that never declares it, cannot leak bodies by omission. This matters most for
+`target/karate.log`, which unlike the console outlives the run and is routinely archived as a CI
+artifact — on `prod`, `credentials` is in scope, so any auth header attached to a request would be
+sitting in that file.
+
+Precedence is **`-Dkarate.log.level` > the environment's `config.debug` > `INFO`**. To get bodies
+for one run without editing any config:
+
+```powershell
+mvn test '-Dkarate.log.level=DEBUG'
+```
 
 ---
 
