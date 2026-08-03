@@ -67,7 +67,7 @@ home-test-api/
         │   │       ├── config-staging.path.yml
         │   │       └── config-prod.path.yml
         │   ├── utils/data/                      ← JSON fixtures
-        │   │   ├── dataset/inventory.json       ← shared default
+        │   │   ├── dataset/inventory.json       ← payloads driving the add-item cases
         │   │   ├── dataset/inventoryRequiredKeys.json ← drives the missing-field cases
         │   │   ├── dataValidation/inventory.json
         │   │   ├── schemes/inventory.json
@@ -318,16 +318,37 @@ by default. Scenarios call these loaders by name only and never know which file 
 
 ### Adding a test case to an existing scenario
 
-The missing-field scenarios are a **dynamic Scenario Outline**: the `Examples` table is a single
-cell holding an expression, and Karate generates one scenario per element of the list it returns.
+The add-item scenarios are **dynamic Scenario Outlines**: the `Examples` table is a single cell
+holding an expression, and Karate generates one scenario per element of the list it returns. A new
+test case is a new object in a JSON file — no feature file is edited.
+
+Two fixtures drive them:
+
+**`dataset/inventory.json`** — the payloads posted by the add-item scenarios:
+
+```json
+[
+    {
+        "description": "standard item",
+        "item": { "id": "10", "name": "Hawaiian", "image": "hawaiian.png", "price": "$14" }
+    }
+]
+```
 
 ```gherkin
-Scenario Outline: Add new item with missing information (<key>) - ...
-  * def body_with_missing_information = utils.remove_key(body.data, key)
+Scenario Outline: Add new item (<description>) - POST (Add new item)
+  * copy new_item = item
+  * set new_item.id = utils.get_new_id(items)
   ...
   Examples:
-    | read('classpath:utils/data/dataset/inventoryRequiredKeys.json') |
+    | read('classpath:utils/data/dataset/inventory.json') |
 ```
+
+`description` labels the generated scenario in the report, and `item` is the whole payload — so
+adding a field to the API means editing the fixture only, never the outline. The `id` is always
+overwritten at runtime with a free one, so the value in the file is just a placeholder.
+
+**`dataset/inventoryRequiredKeys.json`** — the fields whose absence must be rejected:
 
 ```json
 [
@@ -338,15 +359,30 @@ Scenario Outline: Add new item with missing information (<key>) - ...
 ]
 ```
 
-Each object in the file becomes one scenario, and each of its properties becomes a variable inside
-the outline (`key` above, also usable as `<key>` in the scenario name). Covering a new required
-field is one more object in that JSON file — the four feature files that share it
-(smoke/regression × quality/stability) are not touched.
+```gherkin
+Scenario Outline: Add new item with missing information (<key>) - ...
+  * def body_with_missing_information = utils.remove_key(body, key)
+  ...
+  Examples:
+    | read('classpath:utils/data/dataset/inventoryRequiredKeys.json') |
+```
 
-> The expression in the `Examples` cell is evaluated before the `Background` runs and outside the
-> `karate-config.js` scope, so it can only use Karate built-ins. That is why it calls `read(...)`
-> directly instead of `functions.getDataSetJsonByName(...)` — a `def` from the `Background` or a
-> config variable is not yet defined at that point.
+Each object becomes one scenario, and each of its properties becomes a variable inside the outline
+(`item` / `key`, also usable as `<description>` / `<key>` in the scenario name). Both fixtures are
+shared by their four feature files (smoke/regression × quality/stability), so one edit covers all.
+
+The scenarios that need one payload rather than the whole set — "add for existent id", "add with
+missing information" — take the first entry, `functions.getDataSetJsonByName("inventory")[0].item`:
+what they assert depends on the id or the missing key, not on which payload was used.
+
+> Two constraints on the `Examples` cell:
+>
+> - It is evaluated before the `Background` runs and outside the `karate-config.js` scope, so it can
+>   only use Karate built-ins. That is why it calls `read(...)` directly instead of
+>   `functions.getDataSetJsonByName(...)` — a `def` from the `Background` or a config variable is
+>   not yet defined at that point. Fixtures read this way are not environment-scoped.
+> - The `Examples` variables belong to the generated scenario and are not visible from the
+>   `Background`, so any step that uses them lives inside the outline.
 
 ### Adding an endpoint
 
