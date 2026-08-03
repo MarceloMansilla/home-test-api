@@ -76,8 +76,7 @@ home-test-api/
         │           └── inventory/
         │               └── inventory.feature    ← the tests
         └── test/java/
-            ├── karate/KarateRunnerTest.java     ← JUnit 5 entry point
-            └── utils/SetEnvironment.java        ← system-property helper
+            └── karate/KarateRunnerTest.java     ← JUnit 5 entry point
 ```
 
 ---
@@ -93,6 +92,9 @@ The design principle is a strict separation between **data** and **logic**:
 - **Feature files hold intent** — they never contain a URL, a hardcoded path, a fixed id or a fixed
   count. They reference `baseUrl`, `api.*` and `testData.*`, so the same scenario is
   environment-agnostic.
+- **Nothing is shared between scenarios** — `call read('...@tag')` hands the caller back the called
+  scenario's variables, so assertions read `response` and `responseStatus` straight off the
+  returned value. The suite runs on 5 threads, and no scenario can observe another's state.
 
 ### Configuration resolution chain
 
