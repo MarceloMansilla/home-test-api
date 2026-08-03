@@ -1,4 +1,4 @@
-@smokeQuality @regressionQuality
+@smokeQuality @regressionQuality @destructive
 Feature: Inventory Test - Quality
 
 Background:

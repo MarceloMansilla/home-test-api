@@ -1,4 +1,4 @@
-@smokeStability @regressionStability
+@smokeStability @regressionStability @destructive
 Feature: Inventory Test - Stability
 
 Background:

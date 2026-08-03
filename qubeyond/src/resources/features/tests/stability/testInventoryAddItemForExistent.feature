@@ -1,4 +1,7 @@
-@smokeStability @regressionStability
+# @destructive: the POST is expected to be rejected, but it is still a write
+# attempt - if testData.existingItemId is wrong for the environment the item
+# is created, so this must be excluded wherever writes are not allowed
+@smokeStability @regressionStability @destructive
 Feature: Inventory Test - Stability
 
 Background:

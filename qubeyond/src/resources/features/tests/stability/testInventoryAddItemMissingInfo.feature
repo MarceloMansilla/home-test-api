@@ -1,4 +1,6 @@
-@smokeStability @regressionStability
+# @destructive: the POST is expected to be rejected, but it is still a write
+# attempt - an API that stopped validating would create the item
+@smokeStability @regressionStability @destructive
 Feature: Inventory Test - Stability
 
   Background:

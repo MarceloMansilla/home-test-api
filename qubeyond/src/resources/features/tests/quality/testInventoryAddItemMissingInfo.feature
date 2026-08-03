@@ -1,4 +1,6 @@
-@smokeQuality @regressionQuality
+# @destructive: the POST is expected to be rejected, but it is still a write
+# attempt - an API that stopped validating would create the item
+@smokeQuality @regressionQuality @destructive
 Feature: Inventory Test - Quality
 
   Background:

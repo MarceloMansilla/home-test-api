@@ -183,6 +183,7 @@ config:
   connectTimeout: 5000
   readTimeout: 5000
   mockExternalServices: true
+  allowWrites: true      # may the mutating tests POST to this environment?
 
 testData:
   filterId: "3"          # id used by the filter-by-id scenarios
@@ -236,6 +237,7 @@ Scenario: Validation keys items
 | `testData` | Seed data the scenarios assert against — `filterId`, `existingItemId`, `minItemCount`. |
 | `debugMode` | When true, enables verbose request/response logging in console and report. |
 | `mockExternalServices` | Flag for scenarios that need to branch on mocking. |
+| `allowWrites` | Whether this environment may be written to. Absent counts as `false`. |
 | `credentials` | **`prod` only** — `apiKey` and `clientSecret` from environment variables. |
 
 ---
@@ -300,6 +302,7 @@ The suite tags:
 | `@regressionQuality` | body / schema / data assertions, regression suite | 6 |
 | `@smokeStability` | status-code assertions, smoke suite | 5 |
 | `@regressionStability` | status-code assertions, regression suite | 5 |
+| `@destructive` | every feature that `POST`s — exclude with `~@destructive` where writes are unwanted | 7 |
 
 Quality features carry `@smokeQuality @regressionQuality` and stability features carry
 `@smokeStability @regressionStability`, so the two suites currently select the same tests. When they
@@ -312,12 +315,19 @@ Production refuses to start without credentials, by design:
 ```powershell
 $env:PROD_API_KEY = "..."
 $env:PROD_CLIENT_SECRET = "..."
-mvn test '-Dkarate.env=prod'
+mvn test '-Dkarate.env=prod' '-Dkarate.options=--tags ~@destructive'
 ```
 
 ```bash
-PROD_API_KEY=... PROD_CLIENT_SECRET=... mvn test -Dkarate.env=prod
+PROD_API_KEY=... PROD_CLIENT_SECRET=... mvn test -Dkarate.env=prod -Dkarate.options="--tags ~@destructive"
 ```
+
+**`~@destructive` is required on production.** The API has no delete, so every
+`POST` is permanent — an unfiltered run would leave test items in the live catalogue
+forever. `config-prod.yml` sets `allowWrites: false`, so if the filter is forgotten the
+mutating scenarios fail immediately with an explicit message **before any request is
+sent**; the read-only scenarios still pass. The tag is how you skip them cleanly, the
+flag is what guarantees they cannot write.
 
 ### Running from an IDE
 
@@ -346,7 +356,9 @@ both the console and the report.
 
 ### Adding an environment
 
-1. Create `src/resources/config/environments/config-<env>.yml`, including its `testData` block.
+1. Create `src/resources/config/environments/config-<env>.yml`, including its `testData` block
+   and `config.allowWrites`. Omitting `allowWrites` counts as `false`, so a new environment is
+   never exposed to writes by oversight — it has to opt in.
 2. Create `src/resources/config/api/config-<env>.path.yml`.
 3. Optionally create `karate-config-<env>.js` for logic-only overrides.
 4. Optionally add `utils/data/<folder>/<env>/<name>.json` when a JSON fixture differs from the
@@ -451,6 +463,11 @@ Put it under `features/tests/quality/` when it asserts on the body, and under
 `features/tests/stability/` when it asserts on the status code, then tag it for the suites that
 should run it — `@smokeQuality @regressionQuality` or `@smokeStability @regressionStability`. One
 file per test case: an untagged suite is a missing tag, never a copied file.
+
+Add `@destructive` if it writes — including when the write is *expected to be rejected*, since a
+regression in the API's validation would turn that rejection into a real record. Forgetting the tag
+does not expose a protected environment: the guard lives in the operations layer, at the single step
+every write passes through, so the run fails with an explicit message instead of writing.
 
 A new resource follows the same shape — `features/operations/<resource>/<resource>.feature` for the
 calls, one file per test case under `tests/quality/` and `tests/stability/` for the assertions.

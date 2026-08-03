@@ -33,6 +33,9 @@ function fn() {
     testData: envConfig.testData,
     debugMode: envConfig.config.debug,
     mockExternalServices: envConfig.config.mockExternalServices,
+    // whether this environment may be written to. Absent means false: a new
+    // environment has to opt in, it cannot be exposed to writes by omission
+    allowWrites: envConfig.config.allowWrites === true,
     utils: karate.call('classpath:utils/functions/karateUtils.js'),
     functions: karate.call('classpath:utils/functions/DinamicsCalls.js'),
   };
