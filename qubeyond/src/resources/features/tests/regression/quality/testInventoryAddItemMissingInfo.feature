@@ -10,19 +10,19 @@ Feature: Inventory Test - Quality - Regression
   Scenario: Add new item with missing information (id) - POST (Add new item with missing "id" )
     * def body_with_missing_information = utils.remove_key(body.data, "id")
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body_with_missing_information)'}
-    * match notepad.get('response_add_new_item') == "Not all requirements are met"
+    * match response_add_new_item.response == "Not all requirements are met"
 
   Scenario: Add new item with missing information (name) - POST (Add new item with missing "name" )
     * def body_with_missing_information = utils.remove_key(body.data, "name")
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body_with_missing_information)'}
-    * match notepad.get('response_add_new_item') == "Not all requirements are met"
+    * match response_add_new_item.response == "Not all requirements are met"
 
   Scenario: Add new item with missing information (image) - POST (Add new item with missing "image" )
     * def body_with_missing_information = utils.remove_key(body.data, "image")
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body_with_missing_information)'}
-    * match notepad.get('response_add_new_item') == "Not all requirements are met"
+    * match response_add_new_item.response == "Not all requirements are met"
 
   Scenario: Add new item with missing information (price) - POST (Add new item with missing "price" )
     * def body_with_missing_information = utils.remove_key(body.data, "price")
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body_with_missing_information)'}
-    * match notepad.get('response_add_new_item') == "Not all requirements are met"
+    * match response_add_new_item.response == "Not all requirements are met"
