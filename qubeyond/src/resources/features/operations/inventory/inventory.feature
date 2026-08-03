@@ -20,3 +20,9 @@ Feature: Inventory
         When method GET
         * notepad.set('response_filter_by_id', response)
 
+    @add_new_item
+    Scenario: Add new item
+        Given path api.inventory.addItem
+        And request body_item
+        When method POST
+        * notepad.set('response_add_new_item', response)
