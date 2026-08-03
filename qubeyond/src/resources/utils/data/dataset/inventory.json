@@ -1,8 +1,29 @@
-{
-    "data": {
-        "id": "10",
-        "name": "Hawaiian",
-        "image": "hawaiian.png",
-        "price": "$14"
+[
+    {
+        "description": "standard item",
+        "item": {
+            "id": "10",
+            "name": "Hawaiian",
+            "image": "hawaiian.png",
+            "price": "$14"
+        }
+    },
+    {
+        "description": "long name",
+        "item": {
+            "id": "11",
+            "name": "Extra Large Pepperoni Feast With Double Cheese",
+            "image": "pepperoni.png",
+            "price": "$25"
+        }
+    },
+    {
+        "description": "decimal price",
+        "item": {
+            "id": "12",
+            "name": "Garlic Bread",
+            "image": "garlicbread.png",
+            "price": "$4.50"
+        }
     }
-}
+]
