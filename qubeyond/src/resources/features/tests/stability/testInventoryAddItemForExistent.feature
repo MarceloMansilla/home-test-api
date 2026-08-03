@@ -1,5 +1,5 @@
-@smokeStability
-Feature: Inventory Test - Stability - Smoke
+@smokeStability @regressionStability
+Feature: Inventory Test - Stability
 
 Background:
     * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')
@@ -9,7 +9,6 @@ Background:
     * copy body = functions.getDataSetJsonByName("inventory")[0].item
     # an id that already exists in the active environment, so the POST is rejected
     * set body.id = testData.existingItemId
-
 Scenario: Add new item for existent id - POST (Add new item for existent id )
     * def response_add_new_item_for_existent_id = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body)'}
     * match response_add_new_item_for_existent_id.responseStatus == 400

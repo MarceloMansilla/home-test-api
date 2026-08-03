@@ -1,5 +1,5 @@
-@regressionQuality
-Feature: Inventory Test - Quality - Regression
+@smokeQuality @regressionQuality
+Feature: Inventory Test - Quality
 
   Background:
     * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')

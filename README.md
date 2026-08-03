@@ -73,9 +73,23 @@ home-test-api/
         │   │   ├── schemes/inventory.json
         │   │   └── <folder>/<env>/inventory.json ← optional per-environment override
         │   └── features/
-        │       └── operations/
-        │           └── inventory/
-        │               └── inventory.feature    ← the tests
+        │       ├── operations/                   ← the API layer: every HTTP call
+        │       │   └── inventory/
+        │       │       └── inventory.feature
+        │       └── tests/                        ← the assertions
+        │           ├── quality/                  ← response bodies, schemas, data
+        │           │   ├── testInventoryAddItem.feature
+        │           │   ├── testInventoryAddItemAndValidatePresent.feature
+        │           │   ├── testInventoryAddItemForExistent.feature
+        │           │   ├── testInventoryAddItemMissingInfo.feature
+        │           │   ├── testInventoryFilter.feature
+        │           │   └── testInventoryMenu.feature
+        │           └── stability/                ← status codes only
+        │               ├── testInventoryAddItem.feature
+        │               ├── testInventoryAddItemForExistent.feature
+        │               ├── testInventoryAddItemMissingInfo.feature
+        │               ├── testInventoryFilter.feature
+        │               └── testInventoryMenu.feature
         └── test/java/
             └── karate/KarateRunnerTest.java     ← JUnit 5 entry point
 ```
@@ -96,6 +110,33 @@ The design principle is a strict separation between **data** and **logic**:
 - **Nothing is shared between scenarios** — `call read('...@tag')` hands the caller back the called
   scenario's variables, so assertions read `response` and `responseStatus` straight off the
   returned value. The suite runs on 5 threads, and no scenario can observe another's state.
+- **A test case exists exactly once** — see below.
+
+### Test organisation: directories vs tags
+
+Two independent dimensions classify a test, and each is expressed with the mechanism that fits it:
+
+| Dimension | Values | Expressed as | Why |
+|---|---|---|---|
+| **What is asserted** | `quality` / `stability` | **directory** | Different assertions on the same call — genuinely different files. `stability` checks the status code; `quality` checks the body, the schema and the data. |
+| **When it runs** | `smoke` / `regression` | **tag** | The *same* test, selected by different suites. A copy per suite would be duplication. |
+
+So a quality test carries both tags on one file:
+
+```gherkin
+@smokeQuality @regressionQuality
+Feature: Inventory Test - Quality
+```
+
+`--tags @smokeQuality` and `--tags @regressionQuality` both select it, and a plain `mvn test` runs
+it **once**. Promoting a regression test into the smoke suite is adding a tag, never copying a file.
+
+> This replaced an earlier `smoke/` + `regression/` directory split in which every test case existed
+> as four byte-identical files (smoke/regression × quality/stability). That layout ran the whole
+> suite twice per `mvn test`, made each edit a four-way sync, and had already drifted — two files
+> under `regression/stability/` were tagged `@regressionQuality` and were invisible to
+> `--tags @regressionStability`. 20 feature files became 11, with identical coverage and tag
+> selection.
 
 ### Configuration resolution chain
 
@@ -246,10 +287,23 @@ Scenario: Validation keys items
 
 | Selection | Option |
 |---|---|
-| One tag | `--tags @validation_items` |
-| Either tag (OR) | `--tags @smoke,@regression` |
-| Both tags (AND) | `--tags @smoke --tags @regression` |
+| One tag | `--tags @smokeQuality` |
+| Either tag (OR) | `--tags @smokeQuality,@smokeStability` |
+| Both tags (AND) | `--tags @smokeQuality --tags @regressionQuality` |
 | Exclude a tag | `--tags ~@wip` |
+
+The suite tags:
+
+| Tag | Selects | Features |
+|---|---|---|
+| `@smokeQuality` | body / schema / data assertions, smoke suite | 6 |
+| `@regressionQuality` | body / schema / data assertions, regression suite | 6 |
+| `@smokeStability` | status-code assertions, smoke suite | 5 |
+| `@regressionStability` | status-code assertions, regression suite | 5 |
+
+Quality features carry `@smokeQuality @regressionQuality` and stability features carry
+`@smokeStability @regressionStability`, so the two suites currently select the same tests. When they
+need to diverge, drop the tag that no longer applies — do not copy the file.
 
 ### Running against production
 
@@ -369,7 +423,7 @@ Scenario Outline: Add new item with missing information (<key>) - ...
 
 Each object becomes one scenario, and each of its properties becomes a variable inside the outline
 (`item` / `key`, also usable as `<description>` / `<key>` in the scenario name). Both fixtures are
-shared by their four feature files (smoke/regression × quality/stability), so one edit covers all.
+shared by their `quality` and `stability` feature files, so one edit covers all.
 
 The scenarios that need one payload rather than the whole set — "add for existent id", "add with
 missing information" — take the first entry, `functions.getDataSetJsonByName("inventory")[0].item`:
@@ -392,6 +446,14 @@ Add it to the `config-<env>.path.yml` files, then reference it as `api.<resource
 
 Drop any `.feature` file under `src/resources/features/`. The runner picks up the whole tree via
 `Runner.path("classpath:features")` — no registration needed.
+
+Put it under `features/tests/quality/` when it asserts on the body, and under
+`features/tests/stability/` when it asserts on the status code, then tag it for the suites that
+should run it — `@smokeQuality @regressionQuality` or `@smokeStability @regressionStability`. One
+file per test case: an untagged suite is a missing tag, never a copied file.
+
+A new resource follows the same shape — `features/operations/<resource>/<resource>.feature` for the
+calls, one file per test case under `tests/quality/` and `tests/stability/` for the assertions.
 
 ---
 

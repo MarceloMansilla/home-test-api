@@ -1,5 +1,5 @@
-@regressionStability
-Feature: Inventory Test - Stability - Regression
+@smokeStability @regressionStability
+Feature: Inventory Test - Stability
 
   Background:
     * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')

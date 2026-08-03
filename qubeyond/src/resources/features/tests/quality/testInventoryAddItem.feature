@@ -1,11 +1,11 @@
-@smokeQuality
-Feature: Inventory Test - Quality - Smoke
+@smokeQuality @regressionQuality
+Feature: Inventory Test - Quality
 
-Background:
+  Background:
     * def response_inventory = call read('classpath:features/operations/inventory/inventory.feature@validation_items')
     * def items = response_inventory.response.data
 
-Scenario Outline: Add new item (<description>) - POST (Add new item)
+  Scenario Outline: Add new item (<description>) - POST (Add new item)
     # 'item' is this row's payload, straight from the dataset file.
     # copy, not def: def would only bind a reference to the shared dataset object
     * copy new_item = item
