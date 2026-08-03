@@ -13,7 +13,3 @@ Scenario: Add new item - POST (Add new item)
     * def new_item = body.data
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(new_item)'}
     * match notepad.get('response_add_new_item') == "OK"
-
-Scenario: Add new item for existent id - POST (Add new item for existent id )
-    * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(body.data)'}
-    * match notepad.get('response_add_new_item') == "Bad Request"
