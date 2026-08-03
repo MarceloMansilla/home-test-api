@@ -34,7 +34,6 @@ function fn() {
     debugMode: envConfig.config.debug,
     mockExternalServices: envConfig.config.mockExternalServices,
     utils: karate.call('classpath:utils/functions/karateUtils.js'),
-    notepad: karate.call('classpath:config/karate/NotePad.js'),
     functions: karate.call('classpath:utils/functions/DinamicsCalls.js'),
   };
 

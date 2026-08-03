@@ -12,4 +12,4 @@ Scenario: Add new item - POST (Add new item)
     * set body.data.id = id_new
     * def new_item = body.data
     * def response_add_new_item = call read('classpath:features/operations/inventory/inventory.feature@add_new_item') {body_item: '#(new_item)'}
-    * match notepad.get('response_add_new_item') == "OK"
+    * match response_add_new_item.response == "OK"
