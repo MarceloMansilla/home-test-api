@@ -9,5 +9,9 @@ function fn() {
     return karate.read("classpath:utils/data/dataValidation/" + name + ".json");
   };
 
+  functions.getDataSetJsonByName = function (name) {
+    return karate.read("classpath:utils/data/dataset/" + name + ".json");
+  };
+
   return functions;
 }
