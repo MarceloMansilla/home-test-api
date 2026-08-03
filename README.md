@@ -224,7 +224,7 @@ if (!apiKey) {
 Background:
     * url baseUrl
 
-@validation_items
+@smokeQuality
 Scenario: Validation keys items
     Given path api.inventory.getItems
     When method GET
@@ -260,8 +260,8 @@ cd qubeyond
 |---|---|
 | Full suite, `local` (default) | `mvn test` |
 | Full suite, specific environment | `mvn test '-Dkarate.env=qa'` |
-| Single tag | `mvn test '-Dkarate.options=--tags @validation_items'` |
-| Tag + environment | `mvn test '-Dkarate.env=qa' '-Dkarate.options=--tags @validation_items'` |
+| Single tag | `mvn test '-Dkarate.options=--tags @smokeQuality'` |
+| Tag + environment | `mvn test '-Dkarate.env=qa' '-Dkarate.options=--tags @smokeQuality'` |
 | Custom thread count | `mvn test '-Dkarate.threads=10'` |
 | Sequential (debugging) | `mvn test '-Dkarate.threads=1'` |
 | Clean run | `mvn clean test` |
@@ -301,13 +301,13 @@ the arguments and Maven fails with `Unknown lifecycle phase ".env=local"`. The q
 PowerShell from interpreting `@` as a splatting operator:
 
 ```powershell
-mvn test '-Dkarate.env=local' '-Dkarate.options=--tags @validation_items'
+mvn test '-Dkarate.env=local' '-Dkarate.options=--tags @smokeQuality'
 ```
 
 In **Bash / Git Bash** the conventional form works:
 
 ```bash
-mvn test -Dkarate.env=local -Dkarate.options="--tags @validation_items"
+mvn test -Dkarate.env=local -Dkarate.options="--tags @smokeQuality"
 ```
 
 ### Tag filtering
@@ -315,7 +315,7 @@ mvn test -Dkarate.env=local -Dkarate.options="--tags @validation_items"
 Tags are declared above a scenario:
 
 ```gherkin
-@validation_items
+@smokeQuality
 Scenario: Validation keys items
 ```
 

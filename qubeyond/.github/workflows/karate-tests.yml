@@ -1,0 +1,277 @@
+name: Karate tests
+
+# Runs the suite against one environment. Every knob the suite exposes on the
+# command line is an input here, so a run never needs a code change:
+#
+#   mvn test -Dkarate.env=<environment> -Dkarate.threads=<threads> \
+#            -Dkarate.options="--tags <tags>"
+#
+# Callable from other workflows (workflow_call) and by hand (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        type: choice
+        options: [local, dev, qa, staging, prod]
+        default: local
+      tags:
+        description: 'Tag expression - e.g. @smokeQuality, or @smokeQuality,@smokeStability for either. Empty runs the whole suite.'
+        type: string
+        default: ''
+      exclude-destructive:
+        description: 'Skip every scenario that POSTs. Required for prod, and the safe choice anywhere writes should not accumulate.'
+        type: boolean
+        default: false
+      threads:
+        description: 'Thread count. 1 for readable, sequential logs.'
+        type: string
+        default: '5'
+      api-image:
+        description: 'local only: container image serving the API on port 3100. The API is not part of this repository.'
+        type: string
+        default: ''
+      log-level:
+        description: 'Overrides the environment config.debug for this run only.'
+        type: choice
+        options: ['', 'INFO', 'DEBUG']
+        default: ''
+
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      tags:
+        type: string
+        required: false
+        default: ''
+      exclude-destructive:
+        type: boolean
+        required: false
+        default: false
+      threads:
+        type: string
+        required: false
+        default: '5'
+      api-image:
+        type: string
+        required: false
+        default: ''
+      log-level:
+        type: string
+        required: false
+        default: ''
+    secrets:
+      PROD_API_KEY:
+        required: false
+      PROD_CLIENT_SECRET:
+        required: false
+
+# Runs against the same environment queue instead of overlapping. The API has no
+# delete, so every mutating scenario leaves a permanent record: two concurrent
+# runs mean twice the accumulation, and on a shared environment they also move
+# the catalogue under each other's assertions. In-flight runs are never
+# cancelled - a half-finished write run is worse than a slow one.
+concurrency:
+  group: karate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ inputs.environment }} (${{ inputs.threads }} threads)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the request is runnable
+        # Every one of these would otherwise surface as a scenario failure, or
+        # worse, as a write to somewhere that must not be written to.
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          TAGS: ${{ inputs.tags }}
+          EXCLUDE_DESTRUCTIVE: ${{ inputs.exclude-destructive }}
+          THREADS: ${{ inputs.threads }}
+          API_IMAGE: ${{ inputs.api-image }}
+          HAS_API_KEY: ${{ secrets.PROD_API_KEY != '' }}
+          HAS_CLIENT_SECRET: ${{ secrets.PROD_CLIENT_SECRET != '' }}
+        run: |
+          set -uo pipefail
+          status=0
+
+          case "$ENVIRONMENT" in
+            local|dev|qa|staging|prod) ;;
+            *) echo "::error::unknown environment '$ENVIRONMENT' - there is no config/environments/config-$ENVIRONMENT.yml"
+               exit 1 ;;
+          esac
+
+          if ! [[ "$THREADS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::karate.threads must be a positive integer, but was '$THREADS'"
+            status=1
+          fi
+
+          if [ "$ENVIRONMENT" = 'prod' ]; then
+            # config-prod.yml sets allowWrites: false, so a forgotten filter
+            # fails the mutating scenarios instead of writing. That is the
+            # guarantee; excluding them is the intent. Asking for a production
+            # run without the exclusion is asking for guaranteed failures.
+            if [ "$EXCLUDE_DESTRUCTIVE" != 'true' ] && [[ "$TAGS" != *'~@destructive'* ]]; then
+              echo "::error::a production run must exclude the mutating tests - set exclude-destructive. The API has no delete, so a POST against production would stay in the live catalogue permanently."
+              status=1
+            fi
+            if [ "$HAS_API_KEY" != 'true' ] || [ "$HAS_CLIENT_SECRET" != 'true' ]; then
+              echo "::error::PROD_API_KEY and PROD_CLIENT_SECRET must be available as secrets - karate-config-prod.js refuses to start without them"
+              status=1
+            fi
+          fi
+
+          if [ "$ENVIRONMENT" = 'local' ] && [ -z "$API_IMAGE" ]; then
+            echo "::error::'local' expects the API on http://localhost:3100 and the API is not part of this repository. Pass api-image with a container image that serves it, or pick an environment whose host is reachable."
+            status=1
+          fi
+
+          if [ "$ENVIRONMENT" != 'local' ] && [ -n "$API_IMAGE" ]; then
+            echo "::warning::api-image is ignored for '$ENVIRONMENT' - only 'local' resolves to localhost:3100"
+          fi
+
+          exit $status
+
+      - name: Warn when the target host is still a placeholder
+        if: inputs.environment != 'local'
+        # dev, qa, staging and prod ship with placeholder hosts. Saying so up
+        # front keeps the preflight failure from being read as an outage.
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          host=$(grep -E '^\s+host:' "qubeyond/src/resources/config/environments/config-$ENVIRONMENT.yml" | awk '{print $2}')
+          case "$host" in
+            api.develop.com|api.qa.com|api.staging.com|api.production.com)
+              echo "::warning file=qubeyond/src/resources/config/environments/config-$ENVIRONMENT.yml::host '$host' is the placeholder shipped with the repository - the preflight will fail until it points at a real endpoint" ;;
+          esac
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Start the API under test
+        if: inputs.environment == 'local' && inputs.api-image != ''
+        env:
+          API_IMAGE: ${{ inputs.api-image }}
+        run: docker run -d --name api-under-test -p 3100:3100 "$API_IMAGE"
+
+      - name: Wait for the API to answer
+        if: inputs.environment == 'local' && inputs.api-image != ''
+        # The preflight retries 3 x 2s, which is a container that is nearly up -
+        # not one that is still pulling and booting. Waiting here keeps a slow
+        # start from being reported as an unreachable target.
+        run: |
+          set -uo pipefail
+          # the path is the one config/api/config-local.path.yml exposes as
+          # api.inventory.getItems, the same call the preflight makes
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:3100/api/inventory; then
+              echo "the API answered on http://localhost:3100"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the API did not answer on http://localhost:3100 within 60s"
+          docker logs api-under-test || true
+          exit 1
+
+      - name: Run the suite
+        working-directory: qubeyond
+        env:
+          # read through the environment, never interpolated into the command
+          ENVIRONMENT: ${{ inputs.environment }}
+          TAGS: ${{ inputs.tags }}
+          EXCLUDE_DESTRUCTIVE: ${{ inputs.exclude-destructive }}
+          THREADS: ${{ inputs.threads }}
+          LOG_LEVEL: ${{ inputs.log-level }}
+          # karate-config-prod.js reads these with System.getenv and fails fast
+          # when either is missing. Empty for every other environment.
+          PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
+          PROD_CLIENT_SECRET: ${{ secrets.PROD_CLIENT_SECRET }}
+        run: |
+          set -uo pipefail
+          args=(-B -ntp test "-Dkarate.env=$ENVIRONMENT" "-Dkarate.threads=$THREADS")
+
+          # a second --tags is an AND: '--tags @smokeQuality --tags ~@destructive'
+          # selects the smoke quality tests that do not write
+          options=""
+          [ -n "$TAGS" ] && options="--tags $TAGS"
+          if [ "$EXCLUDE_DESTRUCTIVE" = 'true' ]; then
+            options="${options:+$options }--tags ~@destructive"
+          fi
+          if [ -n "$options" ]; then
+            args+=("-Dkarate.options=$options")
+          fi
+          if [ -n "$LOG_LEVEL" ]; then
+            # wins over the environment's config.debug for this run only
+            args+=("-Dkarate.log.level=$LOG_LEVEL")
+          fi
+          echo "mvn ${args[*]}"
+          mvn "${args[@]}"
+
+      - name: Summarise the run
+        if: always()
+        working-directory: qubeyond
+        run: |
+          set -uo pipefail
+          summary=target/karate-reports/karate-summary-json.txt
+
+          if [ ! -f "$summary" ]; then
+            {
+              echo "### No report produced"
+              echo
+              echo "The suite never started. \`KarateRunnerTest\` gates it on one request to the"
+              echo "target and stops the run when that request does not answer, so look for"
+              echo "\`PREFLIGHT FAILED\` in the job log rather than for a failing scenario."
+              echo
+              echo "Preflight output is attached to this run as an artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq -r '
+            "### Karate - env `\(.env)`, \(.threads) thread(s), \((.elapsedTime / 1000) | floor)s",
+            "",
+            "| Result | Count |",
+            "|---|---:|",
+            "| Scenarios passed | \(.scenariosPassed) |",
+            "| Scenarios failed | \(.scenariosfailed) |",
+            "| Features passed | \(.featuresPassed) |",
+            "| Features failed | \(.featuresFailed) |",
+            "| Features skipped by the tag filter | \(.featuresSkipped) |",
+            "",
+            "| Feature | Scenarios | Passed | Failed |",
+            "|---|---:|---:|---:|",
+            (.featureSummary[] | "| `\(.relativePath)` | \(.scenarioCount) | \(.passedCount) | \(.failedCount) |")
+          ' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # karate-summary.html is the report; the preflight output is kept
+          # separate on purpose, and karate.log only carries request and
+          # response bodies where the environment asked for them
+          name: karate-${{ inputs.environment }}-${{ github.run_number }}
+          path: |
+            qubeyond/target/karate-reports/
+            qubeyond/target/karate-preflight/
+            qubeyond/target/karate.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop the API under test
+        if: always() && inputs.environment == 'local' && inputs.api-image != ''
+        run: docker rm -f api-under-test || true
