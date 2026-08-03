@@ -29,9 +29,9 @@ on:
         type: string
         default: '5'
       api-image:
-        description: 'local only: container image serving the API on port 3100. The API is not part of this repository.'
+        description: 'local only: container image serving the API on port 3100. The API is not part of this repository. Empty starts nothing - only useful on a runner where the API is already up.'
         type: string
-        default: ''
+        default: 'automaticbytes/demo-app'
       log-level:
         description: 'Overrides the environment config.debug for this run only.'
         type: choice
@@ -58,7 +58,7 @@ on:
       api-image:
         type: string
         required: false
-        default: ''
+        default: 'automaticbytes/demo-app'
       log-level:
         type: string
         required: false
@@ -99,6 +99,11 @@ jobs:
           EXCLUDE_DESTRUCTIVE: ${{ inputs.exclude-destructive }}
           THREADS: ${{ inputs.threads }}
           API_IMAGE: ${{ inputs.api-image }}
+          # the value both api-image defaults above carry. GitHub gives no way to
+          # ask whether an input was passed or defaulted, so the warning below
+          # compares against it: a caller that never mentioned api-image should
+          # not be told that api-image is being ignored.
+          DEFAULT_API_IMAGE: automaticbytes/demo-app
           HAS_API_KEY: ${{ secrets.PROD_API_KEY != '' }}
           HAS_CLIENT_SECRET: ${{ secrets.PROD_CLIENT_SECRET != '' }}
         run: |
@@ -132,11 +137,12 @@ jobs:
           fi
 
           if [ "$ENVIRONMENT" = 'local' ] && [ -z "$API_IMAGE" ]; then
-            echo "::error::'local' expects the API on http://localhost:3100 and the API is not part of this repository. Pass api-image with a container image that serves it, or pick an environment whose host is reachable."
+            echo "::error::'local' expects the API on http://localhost:3100 and the API is not part of this repository. Leave api-image at its default ('automaticbytes/demo-app') so this job starts it, or pick an environment whose host is reachable."
             status=1
           fi
 
-          if [ "$ENVIRONMENT" != 'local' ] && [ -n "$API_IMAGE" ]; then
+          if [ "$ENVIRONMENT" != 'local' ] && [ -n "$API_IMAGE" ] \
+             && [ "$API_IMAGE" != "$DEFAULT_API_IMAGE" ]; then
             echo "::warning::api-image is ignored for '$ENVIRONMENT' - only 'local' resolves to localhost:3100"
           fi
 
@@ -161,11 +167,24 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Register the arm64 emulator
+        if: inputs.environment == 'local' && inputs.api-image != ''
+        # automaticbytes/demo-app is published for linux/arm64 only, and the
+        # GitHub-hosted runners are amd64 with no binfmt handler registered.
+        # Without this the container exits immediately with 'exec format error'.
+        # Registering the emulator is a no-op for an amd64 image, so this stays
+        # correct if api-image is pointed at a different one.
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Start the API under test
         if: inputs.environment == 'local' && inputs.api-image != ''
         env:
           API_IMAGE: ${{ inputs.api-image }}
-        run: docker run -d --name api-under-test -p 3100:3100 "$API_IMAGE"
+        run: |
+          docker pull "$API_IMAGE"
+          docker run -d --name api-under-test -p 3100:3100 "$API_IMAGE"
 
       - name: Wait for the API to answer
         if: inputs.environment == 'local' && inputs.api-image != ''
