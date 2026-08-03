@@ -34,7 +34,7 @@ jobs:
       - id: host
         run: |
           set -uo pipefail
-          config=qubeyond/src/resources/config/environments/config-qa.yml
+          config=src/resources/config/environments/config-qa.yml
           host=$(grep -E '^[[:space:]]+host:' "$config" | awk '{print $2}')
 
           if [ "$host" = 'api.qa.com' ]; then
