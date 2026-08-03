@@ -1,0 +1,349 @@
+name: CI
+
+# Everything here runs without a reachable API.
+#
+# The suite itself cannot: KarateRunnerTest sends one request to the target
+# before the suite starts and fails the run when it does not answer, and no
+# environment in config/environments/ points at a host reachable from CI
+# ('local' expects http://localhost:3100). So this workflow validates what can
+# be validated statically - the build, the test classpath, and the invariants
+# the suite's design depends on - and the suite itself runs from
+# karate-tests.yml, on demand and against a chosen environment.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+    working-directory: qubeyond
+
+jobs:
+  build:
+    # pom.xml targets Java 11 and the README states 11-or-higher; both ends of
+    # that claim are compiled here so it cannot quietly stop being true
+    name: Build (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['11', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Compile the runner and stage the test resources
+        run: mvn -B -ntp clean test-compile
+
+      - name: Verify the classpath layout the 'classpath:' lookups depend on
+        # Every feature, config file and loader is reached by a 'classpath:' URI,
+        # which resolves against target/test-classes. That mapping lives in
+        # pom.xml's <testResources>, so a broken edit there surfaces as a
+        # file-not-found inside a scenario - long after the build went green.
+        run: |
+          set -uo pipefail
+          status=0
+          for resource in \
+            karate-config.js \
+            karate-config-prod.js \
+            logback-test.xml \
+            config/environments/config-local.yml \
+            config/api/config-local.path.yml \
+            features/operations/inventory/inventory.feature \
+            health/health.feature \
+            utils/functions/karateUtils.js \
+            utils/functions/DinamicsCalls.js \
+            utils/data/dataset/inventory.json \
+            utils/data/dataset/inventoryRequiredKeys.json \
+            utils/data/dataValidation/inventory.json \
+            utils/data/schemes/inventory.json
+          do
+            if [ ! -f "target/test-classes/$resource" ]; then
+              echo "::error file=qubeyond/pom.xml::not on the test classpath: $resource"
+              status=1
+            fi
+          done
+          if [ -f target/test-classes/karate/KarateRunnerTest.java ]; then
+            echo "::error file=qubeyond/pom.xml::KarateRunnerTest.java was copied as a resource - the **/*.java exclude is not being applied"
+            status=1
+          fi
+          exit $status
+
+  validate:
+    # The design rules the README states are checked here rather than trusted.
+    # Each one has already been broken once or would break silently: a mistagged
+    # feature disappears from its suite, an untagged write reaches a protected
+    # environment, a hardcoded URL pins a feature to one environment.
+    name: Validate suite invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install a YAML parser
+        run: pip install --quiet pyyaml
+        working-directory: .
+
+      - name: Every environment declares both of its config files
+        # karate-config.js reads config/environments/config-<env>.yml AND
+        # config/api/config-<env>.path.yml by naming convention. One without the
+        # other is an environment that fails on its first scenario.
+        working-directory: qubeyond/src/resources
+        run: |
+          set -uo pipefail
+          status=0
+          for file in config/environments/config-*.yml; do
+            env=${file#config/environments/config-}; env=${env%.yml}
+            if [ ! -f "config/api/config-$env.path.yml" ]; then
+              echo "::error file=qubeyond/src/resources/$file::environment '$env' has no config/api/config-$env.path.yml"
+              status=1
+            fi
+          done
+          for file in config/api/config-*.path.yml; do
+            env=${file#config/api/config-}; env=${env%.path.yml}
+            if [ ! -f "config/environments/config-$env.yml" ]; then
+              echo "::error file=qubeyond/src/resources/$file::endpoint catalogue for '$env' has no config/environments/config-$env.yml"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Every environment YAML holds the keys the suite reads from it
+        working-directory: qubeyond/src/resources
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+
+          # what karate-config.js dereferences, plus what the features read off
+          # testData. allowWrites is deliberately NOT required: absent counts as
+          # false, which is how a new environment stays closed to writes unless
+          # it opts in.
+          required = [
+              ('url', 'protocol'), ('url', 'host'),
+              ('config', 'debug'), ('config', 'ssl'),
+              ('config', 'connectTimeout'), ('config', 'readTimeout'),
+              ('testData', 'filterId'),
+              ('testData', 'existingItemId'),
+              ('testData', 'minItemCount'),
+          ]
+          endpoints = [('inventory', 'getItems'),
+                       ('inventory', 'filterById'),
+                       ('inventory', 'addItem')]
+
+          status = 0
+          for path in sorted(glob.glob('config/environments/config-*.yml')):
+              doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
+              for section, key in required:
+                  if not isinstance(doc.get(section), dict) or key not in doc[section]:
+                      print(f"::error file=qubeyond/src/resources/{path}::missing '{section}.{key}'")
+                      status = 1
+
+          for path in sorted(glob.glob('config/api/config-*.path.yml')):
+              doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
+              for section, key in endpoints:
+                  if not isinstance(doc.get(section), dict) or key not in doc[section]:
+                      print(f"::error file=qubeyond/src/resources/{path}::missing endpoint '{section}.{key}'")
+                      status = 1
+          sys.exit(status)
+          PY
+
+      - name: JSON fixtures parse and carry the keys the scenarios bind to
+        working-directory: qubeyond/src/resources
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, sys
+
+          # The shape each folder's files must have, wherever they sit - the
+          # shared default or an environment-scoped override under <env>/.
+          # A malformed override only breaks the one environment that resolves
+          # to it, which is exactly the failure nobody notices in time.
+          def check_dataset(doc, path):
+              problems = []
+              if not isinstance(doc, list) or not doc:
+                  return ["expected a non-empty list, one entry per generated scenario"]
+              for i, row in enumerate(doc):
+                  if not isinstance(row, dict):
+                      problems.append(f"entry {i} is not an object")
+                      continue
+                  if 'key' in row:          # inventoryRequiredKeys.json
+                      continue
+                  for field in ('description', 'item'):
+                      if field not in row:
+                          problems.append(
+                              f"entry {i} has no '{field}' - the Examples cell binds it as a variable")
+              return problems
+
+          def check_scheme(doc, path):
+              return [] if isinstance(doc, dict) and 'schema_item' in doc \
+                  else ["expected an object with 'schema_item'"]
+
+          def check_validation(doc, path):
+              return [] if isinstance(doc, dict) and isinstance(doc.get('data'), dict) \
+                  else ["expected an object with a 'data' object"]
+
+          checks = {'dataset': check_dataset,
+                    'schemes': check_scheme,
+                    'dataValidation': check_validation}
+
+          status = 0
+          for path in sorted(glob.glob('utils/data/**/*.json', recursive=True)):
+              folder = path.split('/')[2]      # utils/data/<folder>/[<env>/]<name>.json
+              try:
+                  doc = json.load(open(path, encoding='utf-8'))
+              except ValueError as exc:
+                  print(f"::error file=qubeyond/src/resources/{path}::invalid JSON: {exc}")
+                  status = 1
+                  continue
+              for problem in checks.get(folder, lambda *_: [])(doc, path):
+                  print(f"::error file=qubeyond/src/resources/{path}::{problem}")
+                  status = 1
+          sys.exit(status)
+          PY
+
+      - name: Test features carry the tags of the directory they live in
+        # Two files under the old regression/stability/ were tagged
+        # @regressionQuality and were invisible to --tags @regressionStability.
+        # Nothing failed; the tests simply stopped running. This is that bug,
+        # turned into a build error.
+        working-directory: qubeyond/src/resources/features/tests
+        run: |
+          set -uo pipefail
+          status=0
+          for file in quality/*.feature stability/*.feature; do
+            dir=${file%%/*}
+            tags=$(sed -n '1,/^Feature:/p' "$file" | grep -o '@[A-Za-z_]\+' | tr '\n' ' ')
+            case $dir in
+              quality)   expected='Quality';   foreign='Stability' ;;
+              stability) expected='Stability'; foreign='Quality'   ;;
+            esac
+
+            case $tags in
+              *"@smoke$expected"*|*"@regression$expected"*) ;;
+              *) echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::no suite tag - add @smoke$expected and/or @regression$expected, or this file runs in no suite"
+                 status=1 ;;
+            esac
+            case $tags in
+              *"@smoke$foreign"*|*"@regression$foreign"*)
+                 echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::tagged @…$foreign while living under $dir/ - --tags @…$expected will not select it"
+                 status=1 ;;
+            esac
+
+            # a test that reaches the write scenario is a write, even when the
+            # API is expected to reject it: a validation regression turns that
+            # rejection into a permanent record
+            if grep -q '@add_new_item' "$file"; then
+              case $tags in
+                *'@destructive'*) ;;
+                *) echo "::error file=qubeyond/src/resources/features/tests/$file,line=1::calls @add_new_item but is not tagged @destructive - '--tags ~@destructive' would not exclude it"
+                   status=1 ;;
+              esac
+            fi
+          done
+          exit $status
+
+      - name: Every write passes through the allowWrites guard
+        # The tag is the ergonomic way to skip writes; this line is the
+        # guarantee. A second write scenario added without it would silently
+        # bypass a protected environment.
+        working-directory: qubeyond/src/resources/features/operations
+        run: |
+          set -uo pipefail
+          status=0
+          for file in */*.feature; do
+            if ! awk '
+              /allowWrites/                                  { if (block == 0) shared = 1; else guard[block] = 1 }
+              /^[[:space:]]*Scenario( Outline)?:/             { block++ }
+              /^[[:space:]]*(\*|When|And|Then|Given)[[:space:]]+method[[:space:]]+(POST|PUT|PATCH|DELETE)/ {
+                                                                writes[block] = 1; where[block] = FNR }
+              END { for (b in writes) if (!shared && !guard[b]) { print where[b]; bad = 1 } exit bad }
+            ' "$file" > /tmp/unguarded; then
+              while read -r line; do
+                echo "::error file=qubeyond/src/resources/features/operations/$file,line=$line::write verb with no allowWrites guard in its scenario - a protected environment could be written to"
+              done < /tmp/unguarded
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: The operations layer stays out of the run
+        # Runner.path("classpath:features") sweeps the whole tree, so the
+        # operations features are only kept out of the results by @ignore.
+        working-directory: qubeyond/src/resources/features/operations
+        run: |
+          set -uo pipefail
+          status=0
+          for file in */*.feature; do
+            if ! sed -n '1,/^Feature:/p' "$file" | grep -q '@ignore'; then
+              echo "::error file=qubeyond/src/resources/features/operations/$file,line=1::not tagged @ignore - the runner would count its scenarios as test results"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: The preflight stays outside features/
+        # classpath:health is loaded on its own, before the suite. Under
+        # features/ it would also become an extra test case in every report.
+        working-directory: qubeyond/src/resources
+        run: |
+          set -uo pipefail
+          status=0
+          if [ ! -f health/health.feature ]; then
+            echo "::error::health/health.feature is missing - KarateRunnerTest loads classpath:health as the preflight gate"
+            status=1
+          fi
+          if find features -name '*.feature' | xargs grep -l 'Preflight' 2>/dev/null | grep -q .; then
+            echo "::error::a preflight feature is under features/ - the runner would pick it up as a test case"
+            status=1
+          fi
+          exit $status
+
+      - name: Features name no host, port or path of their own
+        # A feature that spells out a URL stops being environment-agnostic, and
+        # the whole config chain stops meaning anything.
+        working-directory: qubeyond/src/resources
+        run: |
+          set -uo pipefail
+          hits=$(grep -rn --include='*.feature' -E 'https?://' features health \
+                 | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits" | while IFS=: read -r file line _; do
+              echo "::error file=qubeyond/src/resources/$file,line=$line::hardcoded URL - use 'url baseUrl' and 'path api.<resource>.<operation>'"
+            done
+            exit 1
+          fi
+
+      - name: Secrets stay out of the repository
+        working-directory: .
+        run: |
+          set -uo pipefail
+          status=0
+          tracked=$(git ls-files | grep -E 'credentials\.yml$|-secrets\.yml$' || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::credential files are tracked: $tracked"
+            status=1
+          fi
+          # the one file the *-local.yml rule must not swallow: it defines the
+          # default environment and holds no secrets, so a fresh clone needs it
+          if ! git ls-files --error-unmatch qubeyond/src/resources/config/environments/config-local.yml > /dev/null 2>&1; then
+            echo "::error file=.gitignore::config-local.yml is not tracked - a fresh clone cannot run the default 'mvn test'"
+            status=1
+          fi
+          if git ls-files | xargs grep -lniE 'PROD_API_KEY[[:space:]]*[=:][[:space:]]*[A-Za-z0-9]' 2>/dev/null | grep -v '^\.github/' | grep -q .; then
+            echo "::error::a credential looks assigned a literal value in a tracked file"
+            status=1
+          fi
+          exit $status

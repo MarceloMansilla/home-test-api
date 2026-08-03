@@ -1,0 +1,64 @@
+name: Nightly regression
+
+# The full regression suite against qa, overnight.
+#
+# 'Nightly' is where the wide thread count belongs: a runner with cores to
+# spare and nobody waiting. It is also where the write accumulation shows up -
+# the API has no delete, so every run leaves its added items behind, and qa
+# sets allowWrites: true precisely because that is acceptable there. If qa ever
+# needs to stay clean, flip that flag rather than editing this file: the
+# mutating scenarios then refuse to run instead of being silently skipped.
+
+on:
+  schedule:
+    # 05:00 UTC, weekdays - GitHub cron is always UTC
+    - cron: '0 5 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preconditions:
+    # qa ships with a placeholder host. A scheduled run that fails every night
+    # on a known-unconfigured target trains everyone to ignore the notification,
+    # so it reports itself as not-yet-configured and starts working on its own
+    # the day config-qa.yml names a real endpoint.
+    name: Is qa pointed at a real endpoint?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.host.outputs.configured }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: host
+        run: |
+          set -uo pipefail
+          config=qubeyond/src/resources/config/environments/config-qa.yml
+          host=$(grep -E '^[[:space:]]+host:' "$config" | awk '{print $2}')
+
+          if [ "$host" = 'api.qa.com' ]; then
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo "::warning file=$config::host is still the placeholder 'api.qa.com' - the nightly regression is standing down instead of failing the preflight. Point it at a real endpoint to enable it."
+            {
+              echo '### Nightly regression skipped'
+              echo
+              echo "\`config-qa.yml\` still names the placeholder host \`api.qa.com\`. Nothing was run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  regression:
+    name: Regression
+    needs: preconditions
+    if: needs.preconditions.outputs.configured == 'true'
+    uses: ./.github/workflows/karate-tests.yml
+    with:
+      environment: qa
+      # one --tags with a comma is OR: everything in either regression suite
+      tags: '@regressionQuality,@regressionStability'
+      # wider than the default 5 - the README's "CI runner with cores to spare"
+      # case. Safe by construction: no scenario shares state with another.
+      threads: '10'
+    secrets: inherit
