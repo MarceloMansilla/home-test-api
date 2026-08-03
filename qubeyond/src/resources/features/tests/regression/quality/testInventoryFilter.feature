@@ -1,5 +1,5 @@
 @regressionQuality
-Feature: Inventory Test - Quality - Smoke
+Feature: Inventory Test - Quality - Regression
 
 Background:
     * def schema_validation = functions.getDataValidationJsonByName("inventory").data
