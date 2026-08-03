@@ -45,7 +45,7 @@ home-test-api/
 ├── README.md
 ├── .gitignore
 └── qubeyond/
-    ├── pom.xml                                  ← dependencies, classpath, default environment
+    ├── pom.xml                                  ← dependencies, classpath, default environment and thread count
     └── src/
         ├── resources/                           ← test classpath root
         │   ├── karate-config.js                 ← base config: loads the YAML for the active env
@@ -112,7 +112,8 @@ The design principle is a strict separation between **data** and **logic**:
   environment-agnostic.
 - **Nothing is shared between scenarios** — `call read('...@tag')` hands the caller back the called
   scenario's variables, so assertions read `response` and `responseStatus` straight off the
-  returned value. The suite runs on 5 threads, and no scenario can observe another's state.
+  returned value. The suite runs on 5 threads by default, and no scenario can observe another's
+  state — so the thread count is a free knob, not a correctness decision (see §4).
 - **A test case exists exactly once** — see below.
 
 ### Test organisation: directories vs tags
@@ -261,9 +262,37 @@ cd qubeyond
 | Full suite, specific environment | `mvn test '-Dkarate.env=qa'` |
 | Single tag | `mvn test '-Dkarate.options=--tags @validation_items'` |
 | Tag + environment | `mvn test '-Dkarate.env=qa' '-Dkarate.options=--tags @validation_items'` |
+| Custom thread count | `mvn test '-Dkarate.threads=10'` |
+| Sequential (debugging) | `mvn test '-Dkarate.threads=1'` |
 | Clean run | `mvn clean test` |
 
 Valid environments: `local`, `dev`, `qa`, `staging`, `prod`.
+
+### Parallelism
+
+The suite runs in parallel; `-Dkarate.threads` sets how wide. `pom.xml` supplies the default (`5`)
+and forwards it to the forked test JVM through surefire's `systemPropertyVariables`, exactly as it
+does for `karate.env` — a CI runner, a laptop and a debugging session want different numbers, and
+none of them should require editing `KarateRunnerTest` and recompiling.
+
+```powershell
+mvn test '-Dkarate.threads=10'          # wider, for a CI runner with cores to spare
+mvn test '-Dkarate.threads=1'           # sequential, for readable logs while debugging
+```
+
+The value is validated before the preflight runs, so a typo is reported as the argument error it is
+rather than after a network round trip:
+
+```
+karate.threads must be a positive integer, but was 'abc'. Example: mvn test -Dkarate.threads=10
+```
+
+Raising it is safe by construction: no scenario shares state with another (see §3). The one thing to
+keep in mind is that the mutating scenarios each `POST` a new item, so a wider run puts more
+concurrent writes on the target — relevant only where `allowWrites` is `true`.
+
+The preflight itself always runs on a single thread. It is one request, and its job is to answer one
+question before anything else starts.
 
 ### ⚠️ Shell quoting
 
@@ -334,8 +363,9 @@ flag is what guarantees they cannot write.
 
 ### Running from an IDE
 
-Run `KarateRunnerTest` directly. It defaults to `local`; select another environment by adding
-`-Dkarate.env=qa` to the run configuration's VM options.
+Run `KarateRunnerTest` directly. It defaults to `local` on 5 threads; change either by adding
+`-Dkarate.env=qa` or `-Dkarate.threads=1` to the run configuration's VM options. Surefire is not
+involved in an IDE run, so those defaults come from the runner itself rather than from `pom.xml`.
 
 ---
 

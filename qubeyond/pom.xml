@@ -15,6 +15,10 @@
         <karate.version>1.4.1</karate.version>
         <!-- default environment; override from the console with -Dkarate.env=qa -->
         <karate.env>local</karate.env>
+        <!-- default thread count; override from the console with -Dkarate.threads=10.
+             A CI runner and a laptop rarely want the same number, and neither
+             should have to edit the runner to change it -->
+        <karate.threads>5</karate.threads>
     </properties>
 
     <dependencies>         
@@ -59,6 +63,7 @@
                     <argLine>-Dfile.encoding=UTF-8</argLine>
                     <systemPropertyVariables>
                         <karate.env>${karate.env}</karate.env>
+                        <karate.threads>${karate.threads}</karate.threads>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>          
