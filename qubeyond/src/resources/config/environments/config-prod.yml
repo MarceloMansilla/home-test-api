@@ -12,3 +12,15 @@ config:
   connectTimeout: 15000
   readTimeout: 15000
   mockExternalServices: false
+  # Production is read-only for this suite. The API has no delete, so a POST
+  # here would leave test items in the live catalogue permanently. Run
+  # production with --tags ~@destructive; flipping this to true is a deliberate,
+  # reviewed decision, not a convenience.
+  allowWrites: false
+
+# Seed data the scenarios depend on - placeholders, like the host above.
+# Align them with the real production catalogue before using this environment.
+testData:
+  filterId: "3"
+  existingItemId: "1"
+  minItemCount: 9

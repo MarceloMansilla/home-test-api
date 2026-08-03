@@ -1,0 +1,84 @@
+name: Post-deploy smoke
+
+# The smoke suite against an environment that has just been deployed.
+#
+# This is what the smoke tags are for: the same test files as the regression
+# suite, selected down to the set worth running while someone is still watching
+# the deploy. Nothing here is a copy of a regression test - both suites select
+# the same files through different tags.
+#
+# Trigger it from the deploying pipeline:
+#
+#   curl -X POST -H "Authorization: Bearer $TOKEN" \
+#        -H "Accept: application/vnd.github+json" \
+#        https://api.github.com/repos/<owner>/<repo>/dispatches \
+#        -d '{"event_type":"deployment-succeeded","client_payload":{"environment":"staging"}}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment that was deployed'
+        type: choice
+        options: [dev, qa, staging, prod]
+        default: staging
+  repository_dispatch:
+    types: [deployment-succeeded]
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    # The environment arrives as a dispatch input by hand and inside
+    # client_payload from a pipeline. It is rejected here rather than passed on,
+    # because an unknown name would otherwise reach karate-config.js as a
+    # missing config file - a stack trace instead of an answer.
+    name: Resolve the target
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+      read-only: ${{ steps.target.outputs.read-only }}
+    steps:
+      - id: target
+        env:
+          FROM_DISPATCH: ${{ inputs.environment }}
+          FROM_PAYLOAD: ${{ github.event.client_payload.environment }}
+        run: |
+          set -uo pipefail
+          environment="${FROM_DISPATCH:-$FROM_PAYLOAD}"
+
+          case "$environment" in
+            dev|qa|staging) read_only=false ;;
+            # production keeps its writes out: the API has no delete, so a
+            # smoke test that POSTs would leave an item in the live catalogue
+            prod)           read_only=true  ;;
+            local)
+              echo "::error::'local' has no deployment to smoke - it expects the API on the machine running the suite"
+              exit 1 ;;
+            '')
+              echo "::error::no environment given - send it as client_payload.environment"
+              exit 1 ;;
+            *)
+              echo "::error::unknown environment '$environment' - there is no config/environments/config-$environment.yml"
+              exit 1 ;;
+          esac
+
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "read-only=$read_only" >> "$GITHUB_OUTPUT"
+          echo "smoking '$environment' (read-only: $read_only)"
+
+  smoke:
+    name: Smoke
+    needs: resolve
+    uses: ./.github/workflows/karate-tests.yml
+    with:
+      environment: ${{ needs.resolve.outputs.environment }}
+      # one --tags with a comma is OR: both halves of the smoke suite, the
+      # status codes and the bodies
+      tags: '@smokeQuality,@smokeStability'
+      exclude-destructive: ${{ needs.resolve.outputs.read-only == 'true' }}
+      # narrower than the nightly: a deploy check should finish quickly, and a
+      # failure is easier to read when fewer scenarios are interleaved
+      threads: '5'
+    secrets: inherit

@@ -10,3 +10,12 @@ config:
   connectTimeout: 15000
   readTimeout: 15000
   mockExternalServices: false
+  # writes are permanent - the API has no delete. See config-local.yml.
+  allowWrites: true
+
+# Seed data the scenarios depend on - placeholders, like the host above.
+# Align them with the real staging seed catalogue before using this environment.
+testData:
+  filterId: "3"
+  existingItemId: "1"
+  minItemCount: 9

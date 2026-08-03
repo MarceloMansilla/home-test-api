@@ -1,8 +1,12 @@
 function fn() {
   const utils = {};
 
+  // upper bound of the id pool - single source of truth, so the bound and the
+  // messages that mention it cannot drift apart
+  const MAX_ID = 400;
+
   /**
-   * Picks an id between 1 and 100 that is not already used by the given items.
+   * Picks an id between 1 and MAX_ID that is not already used by the given items.
    *
    * @param array  the list of objects, or the raw response ({ data: [ ... ] })
    * @param name   the property holding the id - defaults to 'id'
@@ -23,17 +27,20 @@ function fn() {
     }
 
     const free = [];
-    for (var n = 1; n <= 100; n++) {
+    for (var n = 1; n <= MAX_ID; n++) {
       if (used["" + n] !== true) free.push(n);
     }
 
     if (free.length === 0) {
       throw new Error(
-        "get_new_id: every id between 1 and 100 is already taken",
+        "get_new_id: every id between 1 and " + MAX_ID + " is already taken",
       );
     }
 
-    return free[Math.floor(Math.random() * free.length)];
+    // coerced to a string: the seed catalogue stores ids as "1", and a number
+    // here would make every item the suite adds number-typed, forcing the
+    // schema to accept both and blinding it to an id-type regression
+    return "" + free[Math.floor(Math.random() * free.length)];
   };
 
   /**

@@ -10,3 +10,19 @@ config:
   connectTimeout: 5000
   readTimeout: 5000
   mockExternalServices: true
+  # The API has no delete, so every POST is permanent. An environment that must
+  # not accumulate test data sets this to false, and the mutating tests refuse
+  # to run against it - see features/operations/inventory/inventory.feature.
+  allowWrites: true
+
+# Seed data the scenarios depend on. Every environment declares its own values,
+# so the same feature file runs everywhere without being edited.
+testData:
+  # id used by the filter-by-id scenarios. The expected record for this id lives
+  # in utils/data/dataValidation/[<env>/]inventory.json and must describe THIS id.
+  filterId: "3"
+  # an id that already exists, so POSTing it must be rejected with 400.
+  # Use an id from the seed catalogue, not one created by a previous run.
+  existingItemId: "1"
+  # smallest catalogue size the menu scenario accepts
+  minItemCount: 9

@@ -1,6 +1,6 @@
 {
     "schema_item": {
-        "id": "#? karate.match(_, '#number').pass || karate.match(_, '#string').pass",
+        "id": "#string",
         "name": "#string",
         "image": "#string",
         "price": "#string"
