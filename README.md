@@ -29,8 +29,21 @@ mvn -v
 ```
 
 **For `local` runs only:** the API under test must be listening on `http://localhost:3100`.
-Start it before running the suite — if it is not up, the run stops on the preflight check with a
-single `PREFLIGHT FAILED` message instead of running anything (see §5).
+It is not part of this repository — it is distributed as a container image:
+
+```bash
+docker pull automaticbytes/demo-app
+docker run -p 3100:3100 automaticbytes/demo-app
+curl http://localhost:3100/api/inventory        # 200 once it is up
+```
+
+`config-local.yml` already resolves to that address, so nothing on the `mvn` command line names a
+host. Start it before running the suite — if it is not up, the run stops on the preflight check
+with a single `PREFLIGHT FAILED` message instead of running anything (see §5).
+
+> The image is published for `linux/arm64` only. On an `amd64` machine Docker runs it under
+> emulation, which is why it takes a few seconds longer to answer than the container start
+> suggests.
 
 > The hosts configured for `dev`, `qa`, `staging` and `prod` (`api.develop.com`, `api.qa.com`,
 > `api.staging.com`, `api.production.com`) are placeholders. Point them at real endpoints in
@@ -46,7 +59,7 @@ home-test-api/
 ├── .gitignore
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                           ← build + suite invariants, no API needed
+│       ├── ci.yml                           ← build, suite invariants, and the suite vs. the containerised API
 │       ├── karate-tests.yml                 ← runs the suite against one environment
 │       ├── nightly-regression.yml           ← full regression against qa, weeknights
 │       └── post-deploy-smoke.yml            ← smoke run after a deployment
@@ -561,3 +574,31 @@ in `karate-config-prod.js`. `.gitignore` excludes `config-*-secrets.yml` and `cr
 Note that `.gitignore` also carries a broad `*-local.yml` rule, with an explicit exception for
 `config/**/config-local*.yml` — that file defines the local environment, contains no secrets, and
 must stay in version control so a fresh clone can run `mvn test` out of the box.
+
+---
+
+## 9. Continuous integration
+
+The API under test is not deployed anywhere, but it is reproducible anywhere Docker runs — so CI
+starts the same container a developer starts by hand and runs the suite against it.
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | push to `main`/`develop`, every PR | Builds on JDK 11 and 21, checks the suite invariants (§3), then **runs the whole suite** against `automaticbytes/demo-app` on `localhost:3100` |
+| `karate-tests.yml` | manual / called | One run against a chosen environment, with tags, threads and log level as inputs |
+| `nightly-regression.yml` | 05:00 UTC, weeknights | Full regression against `qa`, 10 threads |
+| `post-deploy-smoke.yml` | `repository_dispatch` after a deploy | Smoke tags against the environment that was deployed |
+
+The `suite` job in `ci.yml` follows the same three steps as a local run — pull the image, run it on
+port 3100, confirm it answers — and only then starts Maven. Two details are worth knowing:
+
+- **The container is per-run.** It is destroyed when the job ends, so the mutating scenarios run in
+  full: `--tags ~@destructive` is not needed, because the catalogue every POST lands in is thrown
+  away. This is the only environment where that is true.
+- **`arm64` emulation.** The image is published for `linux/arm64` only and GitHub's hosted runners
+  are `amd64`, so the job registers QEMU via `docker/setup-qemu-action` first. Without it the
+  container exits immediately with `exec format error`. Emulation also makes the API slower to
+  become ready than the suite's own preflight retry (3 × 2s) tolerates, which is why the job waits
+  for the API itself, up to 60s, before running Maven.
+
+Reports and `karate.log` are uploaded as a build artifact on every run, passing or failing.
