@@ -9,29 +9,43 @@ function fn() {
    * @return the free id as a string, which is the type the API expects
    */
   utils.get_new_id = function (array, name) {
-    const key = name || 'id';
+    const key = name || "id";
     // accept both the response wrapper and a bare list
-    const items = (array && array.data) ? array.data : array;
+    const items = array && array.data ? array.data : array;
 
     // indexed loop: Karate exposes JSON arrays as a Java-backed proxy,
     // so map/filter/includes are not reliable here
     const used = {};
     if (items) {
       for (var i = 0; i < items.length; i++) {
-        used['' + items[i][key]] = true;
+        used["" + items[i][key]] = true;
       }
     }
 
     const free = [];
     for (var n = 1; n <= 100; n++) {
-      if (used['' + n] !== true) free.push(n);
+      if (used["" + n] !== true) free.push(n);
     }
 
     if (free.length === 0) {
-      throw new Error('get_new_id: every id between 1 and 100 is already taken');
+      throw new Error(
+        "get_new_id: every id between 1 and 100 is already taken",
+      );
     }
 
     return free[Math.floor(Math.random() * free.length)];
+  };
+
+  /**
+   * Returns a copy of obj without the given key.
+   *
+   * @param obj   the source object - not mutated
+   * @param name  the key to drop
+   */
+  utils.remove_key = function (obj, name) {
+    const copy = JSON.parse(JSON.stringify(obj));
+    delete copy[name];
+    return copy;
   };
 
   return utils;
