@@ -24,7 +24,7 @@ jobs:
     # on a known-unconfigured target trains everyone to ignore the notification,
     # so it reports itself as not-yet-configured and starts working on its own
     # the day config-qa.yml names a real endpoint.
-    name: Is qa pointed at a real endpoint?
+    name: Is localhost pointed at a real endpoint?
     runs-on: ubuntu-latest
     outputs:
       configured: ${{ steps.host.outputs.configured }}
@@ -34,7 +34,7 @@ jobs:
       - id: host
         run: |
           set -uo pipefail
-          config=src/resources/config/environments/config-qa.yml
+          config=src/resources/config/environments/config-local.yml
           host=$(grep -E '^[[:space:]]+host:' "$config" | awk '{print $2}')
 
           if [ "$host" = 'api.qa.com' ]; then
@@ -55,7 +55,7 @@ jobs:
     if: needs.preconditions.outputs.configured == 'true'
     uses: ./.github/workflows/karate-tests.yml
     with:
-      environment: qa
+      environment: local
       # one --tags with a comma is OR: everything in either regression suite
       tags: '@regressionQuality,@regressionStability'
       # wider than the default 5 - the README's "CI runner with cores to spare"
