@@ -55,7 +55,7 @@ jobs:
     if: needs.preconditions.outputs.configured == 'true'
     uses: ./.github/workflows/karate-tests.yml
     with:
-      environment: localhost
+      environment: local
       # one --tags with a comma is OR: everything in either regression suite
       tags: '@regressionQuality,@regressionStability'
       # wider than the default 5 - the README's "CI runner with cores to spare"
